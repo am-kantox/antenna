@@ -5,6 +5,7 @@ defmodule Antenna.PubSub do
 
   def start_link(opts \\ []) do
     {id, _opts} = Antenna.id_opts(opts)
+    id = Antenna.delivery(id)
 
     with {:ok, pid} <- DistributedSupervisor.start_link(name: id, monitor_nodes: true),
          {:ok, _broadcaster_pid, name} <-

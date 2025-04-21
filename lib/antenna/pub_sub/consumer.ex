@@ -6,27 +6,9 @@ defmodule Antenna.PubSub.Consumer do
   require Logger
 
   def start_link(opts) do
-    {id, opts} = Antenna.id_opts(opts)
+    {id, opts} = Antenna.id_opts(opts) |> IO.inspect(label: "CONSUMER")
     {broadcaster_name, opts} = Keyword.pop!(opts, :broadcaster)
     GenStage.start_link(__MODULE__, {id, broadcaster_name}, opts)
-  end
-
-  defmacro unquote_match(match, event) do
-    # {:case, [],
-    #  [
-    #    quote(do: unquote(event)),
-    #    [
-    #      do: [
-    #        {:->, [], [[quote(do: unquote(match))], true]},
-    #        {:->, [], [[{:_, [], Elixir}], false]}
-    #      ]
-    #    ]
-    #  ]}
-    {:match?, [context: Elixir, imports: [{2, Kernel}]],
-     [
-       quote(do: unquote(Macro.escape(match, unquote: true))),
-       quote(do: unquote(Macro.escape(event)))
-     ]}
   end
 
   # Callbacks
@@ -37,11 +19,11 @@ defmodule Antenna.PubSub.Consumer do
   @impl GenStage
   def handle_events(events, _from, id) do
     # AM might be more efficient with group_by/2
-    for {tags, event} <- events,
+    for {channels, event} <- events,
         DistributedSupervisor.mine?(id, event),
-        tag <- tags,
-        pid <- :pg.get_members(Antenna.tags(), tag) do
-      Antenna.Matcher.handle_event(pid, event)
+        channel <- if(:* in channels, do: :pg.which_groups(Antenna.channels(Antenna)), else: channels),
+        pid <- :pg.get_members(Antenna.channels(Antenna), channel) do
+      Antenna.Matcher.handle_event(pid, channel, event)
     end
 
     {:noreply, [], id}

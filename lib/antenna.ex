@@ -5,29 +5,26 @@ defmodule Antenna do
 
   alias Antenna.PubSub.Broadcaster
 
-  @type match :: Macro.t()
+  @type id :: module()
 
-  @type matcher :: reference()
+  @type channel :: atom() | term()
 
-  @type tag :: term()
+  @type event :: term()
 
-  @type event :: {tag(), term()} | Macro.t() | term()
+  @type handler :: (event() -> :ok) | (channel(), event() -> :ok) | pid() | GenServer.name()
 
-  @type handler :: (event() -> :ok) | pid() | GenServer.name()
-
-  @delivery Application.compile_env(:antenna, :delivery, Antenna.Delivery)
-  @matchers Application.compile_env(:antenna, :matchers, Antenna.Matchers)
-  @tags Application.compile_env(:antenna, :tags, Antenna.Tags)
-  @groups Application.compile_env(:antenna, :groups, Antenna.Groups)
+  @id Application.compile_env(:antenna, :id, Antenna)
 
   @doc false
-  def delivery, do: @delivery
+  def id, do: @id
   @doc false
-  def matchers, do: @matchers
+  def delivery(id), do: Module.concat(id, Delivery)
   @doc false
-  def tags, do: @tags
+  def matchers(id), do: Module.concat(id, Matchers)
   @doc false
-  def groups, do: @groups
+  def channels(id), do: Module.concat(id, Channels)
+  @doc false
+  def guard(id), do: Module.concat(id, Guard)
 
   @doc false
   def id_opts(%{id: id} = opts), do: {id, Map.delete(opts, :id)}
@@ -40,14 +37,20 @@ defmodule Antenna do
   end
 
   @doc """
-  The simple matcher for tagged events.
+  Declares a matcher for tagged events.
 
-  @spec match(tags :: tag() | [tag()], event :: event(), handler :: handler() | [handler()]) ::
-          DynamicSupervisor.on_start_child()
+  ### Example
+
+  ```elixir
+  Antenna.match(Antenna, %{tag: _, success: false}, fn channel, message ->
+    Logger.warning("The processing failed for [" <> 
+      inspect(channel) <> "], result: " <> inspect(message))
+  end, channels: [:rabbit])
+  ```
   """
-  defmacro match(match, tags \\ [], handler)
+  defmacro match(id \\ @id, match, handlers, opts \\ [])
 
-  defmacro match(match, tags, handlers) do
+  defmacro match(id, match, handlers, opts) do
     name = Macro.to_string(match)
 
     quote generated: true, location: :keep do
@@ -56,69 +59,113 @@ defmodule Antenna do
         _ -> false
       end
 
+      opts = unquote(opts)
+
       DistributedSupervisor.start_child(
-        unquote(matchers()),
+        Antenna.matchers(unquote(id)),
         {Antenna.Matcher,
-         name: unquote(name), matcher: matcher, handlers: List.wrap(unquote(handlers)), tags: List.wrap(unquote(tags))}
+         name: unquote(name),
+         matcher: matcher,
+         handlers: List.wrap(unquote(handlers)),
+         channels: List.wrap(Keyword.get(opts, :channels)),
+         once?: Keyword.get(opts, :once?, false)}
       )
     end
   end
 
   @doc """
-  Attaches a matcher process specified by `pid` to a tag
-  """
-  @spec attach(tags :: tag() | [tag()], pid() | event()) :: :ok | :error
-  def attach([], _), do: :ok
+  Undeclares a matcher for tagged events previously declared with `Antenna.match/4`.
 
-  def attach(tags, pid) when is_pid(pid) do
-    tags
-    |> List.wrap()
-    |> Enum.each(&join(&1, pid))
+  Accepts both an original match _or_ a name returned by `Antenna.match/4`,
+    which is effectively `Macro.to_string(match)`.
+
+  ### Example
+
+  ```elixir
+  Antenna.unmatch(Antenna, %{tag: _, success: false})
+  ```
+  """
+  defmacro unmatch(id, match) do
+    quote generated: true, location: :keep do
+      with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
+           do: DistributedSupervisor.terminate_child(Antenna.matchers(unquote(id)), pid)
+    end
   end
 
-  def attach(tags, event) do
-    case whereis(event) do
-      nil -> :error
-      pid when is_pid(pid) -> attach(tags, pid)
+  @doc false
+  defmacro attach(id \\ @id, channels, match) do
+    quote generated: true, location: :keep do
+      with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
+           do: Antenna.subscribe(unquote(id), unquote(channels), pid)
+    end
+  end
+
+  @doc false
+  defmacro unattach(id \\ @id, channels, match) do
+    quote generated: true, location: :keep do
+      with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
+           do: Antenna.unsubscribe(unquote(id), unquote(channels), pid)
     end
   end
 
   @doc """
-  Looks up the process associated with the event definition
+  Subscribes a matcher process specified by `pid` to a channel(s)
   """
-  @spec whereis(event :: event()) :: nil | pid()
-  def whereis(event) do
-    event = fix_event(event)
+  @spec subscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
+  def subscribe(id \\ @id, channels, pid)
 
-    case DistributedSupervisor.children(matchers()) do
-      %{^event => {pid, _spec}} when is_pid(pid) -> pid
-      _ -> nil
+  def subscribe(_, [], _), do: :ok
+
+  def subscribe(id, channels, pid) when is_pid(pid) do
+    channels
+    |> List.wrap()
+    |> Enum.each(&join(id, &1, pid))
+  end
+
+  @doc """
+  Unsubscribes a previously subscribed matcher process specified by `pid` from the channel(s)
+  """
+  @spec unsubscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
+  def unsubscribe(id \\ @id, channels, pid)
+
+  def unsubscribe(_, [], _), do: :ok
+
+  def unsubscribe(id, channels, pid) when is_pid(pid) do
+    channels
+    |> List.wrap()
+    |> Enum.each(&leave(id, &1, pid))
+  end
+
+  @doc false
+  defmacro whereis(id \\ @id, match)
+  defmacro whereis(id, match) when is_binary(match), do: do_whereis(id, match)
+  defmacro whereis(id, match), do: do_whereis(id, Macro.to_string(match))
+
+  defp do_whereis(id, match) do
+    quote generated: true, location: :keep do
+      case DistributedSupervisor.children(Antenna.matchers(unquote(id))) do
+        %{unquote(match) => {pid, _spec}} when is_pid(pid) -> pid
+        _ -> nil
+      end
     end
   end
 
   @doc """
   Sends an event to all the associated matchers
   """
-  @spec event(tags :: tag() | [tag()], event :: event()) :: :ok
-  def event(tags, event), do: Broadcaster.sync_notify(Antenna.delivery(), {List.wrap(tags), event})
+  @spec event(id :: id(), channels :: channel() | [channel()], event :: event()) :: :ok
+  def event(id \\ @id, channels, event),
+    do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event})
 
-  defp fix_event({atom, meta, args}) when is_atom(atom) and is_list(meta) and is_list(args), do: {atom, meta, args}
+  @spec join(id(), channel(), pid()) :: :ok | :already_joined
+  defp join(id, channel, pid) do
+    scope = channels(id)
 
-  defp fix_event(event) do
-    event =
-      event
-      |> Macro.escape()
-      |> Macro.postwalk(fn
-        {:_, _, _} = quoted -> quoted
-        :_ -> Macro.var(:_, __ENV__.context)
-        other -> other
-      end)
-
-    quote(do: unquote(event))
+    if pid not in :pg.get_members(scope, channel),
+      do: :pg.join(scope, channel, pid),
+      else: :already_joined
   end
 
-  defp join(tag, pid) do
-    scope = tags()
-    if pid not in :pg.get_members(scope, tag), do: :pg.join(scope, tag, pid)
-  end
+  @spec leave(id(), channel(), pid()) :: :ok | :not_joined
+  defp leave(id, channel, pid), do: id |> channels() |> :pg.leave(channel, pid)
 end
