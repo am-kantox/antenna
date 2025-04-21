@@ -66,6 +66,7 @@ defmodule Antenna do
         {Antenna.Matcher,
          name: unquote(name),
          id: unquote(id),
+         match: unquote(name),
          matcher: matcher,
          handlers: List.wrap(unquote(handlers)),
          channels: List.wrap(Keyword.get(opts, :channels)),
@@ -86,7 +87,7 @@ defmodule Antenna do
   Antenna.unmatch(Antenna, %{tag: _, success: false})
   ```
   """
-  defmacro unmatch(id, match) do
+  defmacro unmatch(id \\ @id, match) do
     quote generated: true, location: :keep do
       with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
            do: DistributedSupervisor.terminate_child(Antenna.matchers(unquote(id)), pid)
@@ -169,11 +170,17 @@ defmodule Antenna do
   defp join(id, channel, pid) do
     scope = channels(id)
 
-    if pid in :pg.get_members(scope, channel),
-      do: :already_joined,
-      else: :pg.join(scope, channel, pid)
+    if pid in :pg.get_members(scope, channel) do
+      :already_joined
+    else
+      :ok = Antenna.Guard.add(id, channel, pid)
+      :pg.join(scope, channel, pid)
+    end
   end
 
   @spec leave(id(), channel(), pid()) :: :ok | :not_joined
-  defp leave(id, channel, pid), do: id |> channels() |> :pg.leave(channel, pid)
+  defp leave(id, channel, pid) do
+    with :ok <- id |> channels() |> :pg.leave(channel, pid),
+         do: Antenna.Guard.remove(id, channel, pid)
+  end
 end

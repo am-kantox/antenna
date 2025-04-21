@@ -7,12 +7,14 @@ defmodule Antenna.Matcher do
 
   use GenServer
 
-  @enforce_keys [:id, :matcher, :handlers, :channels]
-  defstruct id: nil, matcher: nil, handlers: [], channels: MapSet.new(), once?: false
+  @enforce_keys [:id, :match, :matcher, :handlers]
+  defstruct [:id, :match, :matcher, :handlers, :channels, :once?]
 
   @doc false
   def start_link(opts) do
     {name, opts} = Keyword.pop!(opts, :name)
+    opts = opts |> Keyword.put_new(:once?, false) |> Keyword.update(:channels, MapSet.new(), &MapSet.new/1)
+
     GenServer.start_link(__MODULE__, struct!(__MODULE__, opts), name: name)
   end
 
@@ -23,8 +25,10 @@ defmodule Antenna.Matcher do
 
   @impl GenServer
   def handle_continue(:channels, %__MODULE__{channels: channels} = state) do
-    Antenna.subscribe(channels, self())
-    {:noreply, %__MODULE__{state | channels: MapSet.new(channels)}}
+    state.id |> Antenna.subscribe(MapSet.to_list(channels), self())
+    state.id |> Antenna.Guard.fix(state.match, self())
+
+    {:noreply, state}
   end
 
   @impl GenServer
