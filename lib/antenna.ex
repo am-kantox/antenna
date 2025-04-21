@@ -65,6 +65,7 @@ defmodule Antenna do
         Antenna.matchers(unquote(id)),
         {Antenna.Matcher,
          name: unquote(name),
+         id: unquote(id),
          matcher: matcher,
          handlers: List.wrap(unquote(handlers)),
          channels: List.wrap(Keyword.get(opts, :channels)),
@@ -157,13 +158,20 @@ defmodule Antenna do
   def event(id \\ @id, channels, event),
     do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event})
 
+  @doc """
+  Returns a map of matches to matchers
+  """
+  @spec registered_matchers(id :: id()) :: %{term() => {pid(), Supervisor.child_spec()}}
+  def registered_matchers(id),
+    do: id |> Antenna.matchers() |> DistributedSupervisor.children()
+
   @spec join(id(), channel(), pid()) :: :ok | :already_joined
   defp join(id, channel, pid) do
     scope = channels(id)
 
-    if pid not in :pg.get_members(scope, channel),
-      do: :pg.join(scope, channel, pid),
-      else: :already_joined
+    if pid in :pg.get_members(scope, channel),
+      do: :already_joined,
+      else: :pg.join(scope, channel, pid)
   end
 
   @spec leave(id(), channel(), pid()) :: :ok | :not_joined

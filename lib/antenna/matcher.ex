@@ -7,7 +7,8 @@ defmodule Antenna.Matcher do
 
   use GenServer
 
-  defstruct matcher: nil, handlers: [], channels: MapSet.new(), once?: false
+  @enforce_keys [:id, :matcher, :handlers, :channels]
+  defstruct id: nil, matcher: nil, handlers: [], channels: MapSet.new(), once?: false
 
   @doc false
   def start_link(opts) do
@@ -21,17 +22,22 @@ defmodule Antenna.Matcher do
   def init(%__MODULE__{} = state), do: {:ok, state, {:continue, :channels}}
 
   @impl GenServer
+  def handle_continue(:channels, %__MODULE__{channels: channels} = state) do
+    Antenna.subscribe(channels, self())
+    {:noreply, %__MODULE__{state | channels: MapSet.new(channels)}}
+  end
+
+  @impl GenServer
   def handle_cast({:handle_event, channel, event}, state) do
     if state.matcher.(event) do
       Enum.each(state.handlers, fn
         handler when is_function(handler, 1) -> handler.(event)
         handler when is_function(handler, 2) -> handler.(channel, event)
-        process -> send(process, {:antenna_event, self(), event})
+        process -> send(process, {:antenna_event, channel, event})
       end)
     end
 
-    # AM
-    if state.once?, do: :ok
+    if state.once?, do: DistributedSupervisor.terminate_child(Antenna.matchers(state.id), self())
 
     {:noreply, state}
   end
@@ -41,10 +47,4 @@ defmodule Antenna.Matcher do
 
   def handle_cast({:remove_handler, handler}, state),
     do: {:noreply, %__MODULE__{state | handlers: Enum.reject(state.handlers, &(&1 == handler))}}
-
-  @impl GenServer
-  def handle_continue(:channels, %__MODULE__{channels: channels} = state) do
-    Antenna.subscribe(channels, self())
-    {:noreply, %__MODULE__{state | channels: MapSet.new(channels)}}
-  end
 end

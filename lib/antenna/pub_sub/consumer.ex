@@ -6,8 +6,9 @@ defmodule Antenna.PubSub.Consumer do
   require Logger
 
   def start_link(opts) do
-    {id, opts} = Antenna.id_opts(opts) |> IO.inspect(label: "CONSUMER")
+    {id, opts} = Antenna.id_opts(opts)
     {broadcaster_name, opts} = Keyword.pop!(opts, :broadcaster)
+
     GenStage.start_link(__MODULE__, {id, broadcaster_name}, opts)
   end
 
