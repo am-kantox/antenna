@@ -1,17 +1,88 @@
 defmodule Antenna do
   @moduledoc """
-  Documentation for `Antenna`.
+  `Antenna` is a mixture of `Phoenix.PubSub` and 
+    [`:gen_event`](https://www.erlang.org/doc/apps/stdlib/gen_event.html)
+    functionality with some batteries included.
+
+  It implements back-pressure on top of `GenStage`, is fully conformant with
+    [OTP Design Principles](https://www.erlang.org/doc/system/events). and
+    is distributed out of the box.
+
+  One can have as many isolated `Antenna`s as necessary, distinguished by `t:id()`.
+
+  The workflow looks like shown below.
+
+  ```
+                          ┌───────────────┐                                               
+                          │               │       Antenna.event(AntID, :tag1, %{foo: 42}) 
+                          │  Broadcaster  │───────────────────────────────────────────────
+                          │               │                                               
+                          └───────────────┘                                               
+                                ──/──                                                     
+                          ────── /   ─────                                                
+                    ──────      /         ──────                                          
+              ──────           /                ─────                                     
+          ────                /                      ───                                  
+  ┌────────────────┐  ┌────────────────┐       ┌────────────────┐                         
+  │                │  │                │       │                │                         
+  │ Consumer@node1 │  │ Consumer@node1 │   …   │ Consumer@nodeN │                         
+  │                │  │                │       │                │                         
+  └────────────────┘  └────────────────┘       └────────────────┘                         
+          ·                   ·                         ·                                 
+        /   \               /   \                     /   \                               
+      /       \           /       \                 /       \                             
+    ·   mine?   ·       ·   mine?   ·             ·   mine?   ·                           
+      \       /           \       /                 \       /                             
+        \   /               \   /                     \   /                               
+          ·                   ·                         ·                                 
+          │                   │                         │                                 
+          │                   │                         │                                 
+        ─────                 │                       ─────                               
+                              │                                                           
+                              │                                                           
+                       ┌──────────────┐                                                   
+                       │              │             if (match?), do: call_handlers(event) 
+                       │   matchers   │───────────────────────────────────────────────────
+                       │              │                                                   
+                       └──────────────┘                                                   
+  ```
+
+  ## Usage example
+
+  The consumer of this library is supposed to declare one or more matchers, subscribing to one
+    or more channels, and then call `Antenna.event/2` to propagate the event.
+
+  ```elixir
+  assert {:ok, pid1, "{:tag_1, a, _} when is_nil(a)"} =
+    Antenna.match(Antenna, {:tag_1, a, _} when is_nil(a), self(), channels: [:chan_1])
+
+  assert :ok = Antenna.event(Antenna, [:chan_1], {:tag_1, nil, 42})
+  assert_receive {:antenna_event, :chan_1, {:tag_1, nil, 42}}
+  ```
   """
+
+  # Edit/view: https://cascii.app/4164d
 
   alias Antenna.PubSub.Broadcaster
 
+  @typedoc "The identifier of the isolated `Antenna`"
   @type id :: module()
 
+  @typedoc "The identifier of the channel, messages can be sent to, preferrably `atom()`"
   @type channel :: atom() | term()
 
+  @typedoc "The event being sent to the listeners"
   @type event :: term()
 
-  @type handler :: (event() -> :ok) | (channel(), event() -> :ok) | pid() | GenServer.name()
+  @typedoc """
+  The actual handler to be associated with an event(s). It might be either a function
+    or a process id, in which case the message of a following shape will be sent to it.
+
+  ```elixir
+  {:antenna_event, channel, event}
+  ```
+  """
+  @type handler :: (event() -> :ok) | (channel(), event() -> :ok) | Antenna.Matcher.t() | pid() | GenServer.name()
 
   @id Application.compile_env(:antenna, :id, Antenna)
 
@@ -153,7 +224,10 @@ defmodule Antenna do
   end
 
   @doc """
-  Sends an event to all the associated matchers
+  Sends an event to all the associated matchers through channels.
+
+  The special `:*` might be specified as channels, then the event
+    will be sent to all the registered channels.
   """
   @spec event(id :: id(), channels :: channel() | [channel()], event :: event()) :: :ok
   def event(id \\ @id, channels, event),

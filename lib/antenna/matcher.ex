@@ -1,9 +1,16 @@
 defmodule Antenna.Matcher do
   @moduledoc """
   The behaviour defining matchers in the `Antenna` pub-sub model.
+
+  While the matcher might be a simple function, or a process identifier,
+    using this behaviour would have your testing process simplified.
   """
 
-  @callback handle_match(term()) :: any()
+  @typedoc "The module implementing `handle_match/2` callback"
+  @type t :: module()
+
+  @doc "The funcion to be called back upon match"
+  @callback handle_match(Antenna.channel(), Antenna.event()) :: :ok
 
   use GenServer
 
@@ -18,12 +25,15 @@ defmodule Antenna.Matcher do
     GenServer.start_link(__MODULE__, struct!(__MODULE__, opts), name: name)
   end
 
+  @doc false
   def handle_event(me, channel, event), do: GenServer.cast(me, {:handle_event, channel, event})
 
   @impl GenServer
+  @doc false
   def init(%__MODULE__{} = state), do: {:ok, state, {:continue, :channels}}
 
   @impl GenServer
+  @doc false
   def handle_continue(:channels, %__MODULE__{channels: channels} = state) do
     state.id |> Antenna.subscribe(MapSet.to_list(channels), self())
     state.id |> Antenna.Guard.fix(state.match, self())
@@ -32,6 +42,7 @@ defmodule Antenna.Matcher do
   end
 
   @impl GenServer
+  @doc false
   def handle_cast({:handle_event, channel, event}, state) do
     if state.matcher.(event) do
       Enum.each(state.handlers, fn

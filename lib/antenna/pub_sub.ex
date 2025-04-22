@@ -27,7 +27,7 @@ defmodule Antenna.PubSub do
   end
 
   def broadcaster_name(id) when is_atom(id),
-    do: Module.concat(id, Broadcaster)
+    do: Module.concat(id, :Broadcaster)
 
   def broadcaster(id) when is_atom(id),
     do: DistributedSupervisor.whereis(id, broadcaster_name(id))
