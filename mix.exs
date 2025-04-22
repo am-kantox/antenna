@@ -95,6 +95,11 @@ defmodule Antenna.MixProject do
       source_url: "https://github.com/am-kantox/#{@app}",
       extras: ~w[README.md],
       groups_for_modules: [],
+      groups_for_docs: [
+        "Functions (Client)": &(&1[:section] == :client),
+        "Functions (Setup)": &(&1[:section] == :setup),
+        "Functions (Internals)": &(&1[:section] == :internals)
+      ],
       before_closing_body_tag: &before_closing_body_tag/1
     ]
   end

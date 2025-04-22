@@ -105,6 +105,7 @@ defmodule Antenna do
   end, channels: [:rabbit])
   ```
   """
+  @doc section: :setup
   defmacro match(id \\ @id, match, handlers, opts \\ [])
 
   defmacro match(id, match, handlers, opts) do
@@ -144,6 +145,7 @@ defmodule Antenna do
   Antenna.unmatch(Antenna, %{tag: _, success: false})
   ```
   """
+  @doc section: :setup
   defmacro unmatch(id \\ @id, match) do
     quote generated: true, location: :keep do
       with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
@@ -152,6 +154,7 @@ defmodule Antenna do
   end
 
   @doc false
+  @doc section: :setup
   defmacro attach(id \\ @id, channels, match) do
     quote generated: true, location: :keep do
       with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
@@ -160,6 +163,7 @@ defmodule Antenna do
   end
 
   @doc false
+  @doc section: :setup
   defmacro unattach(id \\ @id, channels, match) do
     quote generated: true, location: :keep do
       with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
@@ -170,6 +174,7 @@ defmodule Antenna do
   @doc """
   Subscribes a matcher process specified by `pid` to a channel(s)
   """
+  @doc section: :setup
   @spec subscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
   def subscribe(id \\ @id, channels, pid)
 
@@ -184,6 +189,7 @@ defmodule Antenna do
   @doc """
   Unsubscribes a previously subscribed matcher process specified by `pid` from the channel(s)
   """
+  @doc section: :setup
   @spec unsubscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
   def unsubscribe(id \\ @id, channels, pid)
 
@@ -196,6 +202,7 @@ defmodule Antenna do
   end
 
   @doc false
+  @doc section: :internals
   defmacro whereis(id \\ @id, match)
   defmacro whereis(id, match) when is_binary(match), do: do_whereis(id, match)
   defmacro whereis(id, match), do: do_whereis(id, Macro.to_string(match))
@@ -218,6 +225,7 @@ defmodule Antenna do
   If one wants to collect results of all the registered event handlers,
     they should look at `sync_event/3` instead.
   """
+  @doc section: :client
   @spec event(id :: id(), channels :: channel() | [channel()], event :: event()) :: :ok
   def event(id \\ @id, channels, event),
     do: Broadcaster.async_notify(Antenna.delivery(id), {List.wrap(channels), event})
@@ -232,6 +240,7 @@ defmodule Antenna do
     all the registered handlers respond; the results would have been collected
     and returned as a list of no specific order.
   """
+  @doc section: :client
   @spec sync_event(id :: id(), channels :: channel() | [channel()], event :: event()) :: [term()]
   def sync_event(id \\ @id, channels, event),
     do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event})
@@ -239,6 +248,7 @@ defmodule Antenna do
   @doc """
   Returns a map of matches to matchers
   """
+  @doc section: :internals
   @spec registered_matchers(id :: id()) :: %{term() => {pid(), Supervisor.child_spec()}}
   def registered_matchers(id),
     do: id |> Antenna.matchers() |> DistributedSupervisor.children()
