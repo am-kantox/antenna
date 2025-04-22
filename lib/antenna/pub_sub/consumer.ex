@@ -3,6 +3,8 @@ defmodule Antenna.PubSub.Consumer do
 
   use GenStage
 
+  @broadcaster_opts Application.compile_env(:antenna, :broadcaster_opts, [])
+
   require Logger
 
   def start_link(opts) do
@@ -15,17 +17,25 @@ defmodule Antenna.PubSub.Consumer do
   # Callbacks
 
   @impl GenStage
-  def init({id, broadcaster_name}), do: {:consumer, id, subscribe_to: [{broadcaster_name, []}]}
+  def init({id, broadcaster_name}), do: {:consumer, id, subscribe_to: [{broadcaster_name, @broadcaster_opts}]}
 
   @impl GenStage
   def handle_events(events, _from, id) do
-    # AM might be more efficient with group_by/2
-    for {channels, event} <- events,
-        DistributedSupervisor.mine?(id, event),
-        channel <- if(:* in channels, do: :pg.which_groups(Antenna.channels(Antenna)), else: channels),
-        pid <- :pg.get_members(Antenna.channels(Antenna), channel) do
-      Antenna.Matcher.handle_event(pid, channel, event)
-    end
+    results =
+      for {from, {channels, event}} <- events,
+          DistributedSupervisor.mine?(id, event),
+          channel <- if(:* in channels, do: :pg.which_groups(Antenna.channels(Antenna)), else: channels),
+          pid <- :pg.get_members(Antenna.channels(Antenna), channel),
+          reduce: %{} do
+        acc ->
+          result = Antenna.Matcher.handle_event(pid, from, channel, event)
+          Map.update(acc, from, [result], &[result | &1])
+      end
+
+    Enum.each(results, fn
+      {nil, _} -> :ok
+      {from, results} -> GenStage.reply(from, results)
+    end)
 
     {:noreply, [], id}
   end

@@ -23,6 +23,17 @@ defmodule Antenna.PubSub.Broadcaster do
     )
   end
 
+  @doc """
+  Sends an event and returns immediately.
+  """
+  def async_notify(name \\ Antenna.Matchers, event) do
+    DistributedSupervisor.cast(
+      name,
+      Antenna.PubSub.broadcaster_name(name),
+      {:notify, event}
+    )
+  end
+
   ## Callbacks
 
   def init(_opts), do: {:producer, {:queue.new(), 0}, dispatcher: GenStage.BroadcastDispatcher}
@@ -30,16 +41,22 @@ defmodule Antenna.PubSub.Broadcaster do
   def handle_call({:notify, event}, from, {queue, demand}),
     do: dispatch_events(:queue.in({from, event}, queue), demand, [])
 
+  def handle_cast({:notify, event}, {queue, demand}),
+    do: dispatch_events(:queue.in({nil, event}, queue), demand, [])
+
   def handle_demand(incoming_demand, {queue, demand}),
     do: dispatch_events(queue, incoming_demand + demand, [])
 
+  defp dispatch_events(queue, demand, events) when demand <= 0,
+    do: {:noreply, Enum.reverse(events), {queue, demand}}
+
   defp dispatch_events(queue, demand, events) do
-    with d when d > 0 <- demand,
-         {{:value, {from, event}}, queue} <- :queue.out(queue) do
-      GenStage.reply(from, :ok)
-      dispatch_events(queue, demand - 1, [event | events])
-    else
-      _ -> {:noreply, Enum.reverse(events), {queue, demand}}
+    case :queue.out(queue) do
+      {{:value, {from, event}}, queue} ->
+        dispatch_events(queue, demand - 1, [{from, event} | events])
+
+      _ ->
+        {:noreply, Enum.reverse(events), {queue, demand}}
     end
   end
 end

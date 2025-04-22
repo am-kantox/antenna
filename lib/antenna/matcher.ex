@@ -10,7 +10,7 @@ defmodule Antenna.Matcher do
   @type t :: module()
 
   @doc "The funcion to be called back upon match"
-  @callback handle_match(Antenna.channel(), Antenna.event()) :: :ok
+  @callback handle_match(Antenna.channel(), Antenna.event()) :: term()
 
   use GenServer
 
@@ -26,7 +26,15 @@ defmodule Antenna.Matcher do
   end
 
   @doc false
-  def handle_event(me, channel, event), do: GenServer.cast(me, {:handle_event, channel, event})
+  @spec handle_event(pid(), GenServer.from() | nil, Antenna.channel(), Antenna.event()) ::
+          :ok
+          | {:no_match, Antenna.channel()}
+          | {:match, %{match: term(), results: [term()], pid: pid(), channel: Antenna.channel()}}
+  def handle_event(me, nil, channel, event),
+    do: GenServer.cast(me, {:handle_event, channel, event})
+
+  def handle_event(me, _from, channel, event),
+    do: GenServer.call(me, {:handle_event, channel, event})
 
   @impl GenServer
   @doc false
@@ -50,9 +58,9 @@ defmodule Antenna.Matcher do
         handler when is_function(handler, 2) -> handler.(channel, event)
         process -> send(process, {:antenna_event, channel, event})
       end)
-    end
 
-    if state.once?, do: DistributedSupervisor.terminate_child(Antenna.matchers(state.id), self())
+      if state.once?, do: DistributedSupervisor.terminate_child(Antenna.matchers(state.id), self())
+    end
 
     {:noreply, state}
   end
@@ -62,4 +70,23 @@ defmodule Antenna.Matcher do
 
   def handle_cast({:remove_handler, handler}, state),
     do: {:noreply, %__MODULE__{state | handlers: Enum.reject(state.handlers, &(&1 == handler))}}
+
+  @impl GenServer
+  @doc false
+  def handle_call({:handle_event, channel, event}, _from, state) do
+    if state.matcher.(event) do
+      results =
+        Enum.map(state.handlers, fn
+          handler when is_function(handler, 1) -> handler.(event)
+          handler when is_function(handler, 2) -> handler.(channel, event)
+          process -> send(process, {:antenna_event, channel, event})
+        end)
+
+      if state.once?, do: DistributedSupervisor.terminate_child(Antenna.matchers(state.id), self())
+
+      {:reply, {:match, %{match: state.match, pid: self(), channel: channel, results: results}}, state}
+    else
+      {:reply, {:no_match, channel}, state}
+    end
+  end
 end

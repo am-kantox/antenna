@@ -1,14 +1,18 @@
 defmodule Antenna do
   @moduledoc """
-  `Antenna` is a mixture of `Phoenix.PubSub` and 
-    [`:gen_event`](https://www.erlang.org/doc/apps/stdlib/gen_event.html)
-    functionality with some batteries included.
+  `Antenna` is a mixture of [`Phoenix.PubSub`](https://hexdocs.pm/phoenix_pubsub/Phoenix.PubSub.html)
+    and [`:gen_event`](https://www.erlang.org/doc/apps/stdlib/gen_event.html) functionality
+    with some batteries included.
 
   It implements back-pressure on top of `GenStage`, is fully conformant with
     [OTP Design Principles](https://www.erlang.org/doc/system/events). and
     is distributed out of the box.
 
-  One can have as many isolated `Antenna`s as necessary, distinguished by `t:id()`.
+  `Antenna` supports both asynchronous _and_ synchronous events. While the most preferrable way
+    would be to stay fully async with `Antenna.event/3`, one still might propagate the event
+    synchronously with `Antenna.sync_event/3` and collect all the responses from all the handlers.
+
+  One can have as many isolated `Antenna`s as necessary, distinguished by `Antenna.t:id/0`.
 
   The workflow looks like shown below.
 
@@ -16,14 +20,17 @@ defmodule Antenna do
 
   ```mermaid
   sequenceDiagram
-    Consumer->>+Broadcaster: event(channel, event)
+    Consumer->>+Broadcaster: sync_event(channel, event)
+    Consumer->>+Broadcaster: event(channel, event) 
     Broadcaster-->>+Consumer@Node1: event
     Broadcaster-->>+Consumer@Node2: event
     Broadcaster-->>+Consumer@NodeN: event
     Consumer@Node1-->>-NoOp: mine?
     Consumer@NodeN-->>-NoOp: mine?
-    Consumer@Node2->>Matchers: event
-    Matchers->>Handlers: handle_match/2
+    Consumer@Node2-->>+Matchers: event
+    Matchers-->>+Handlers: handle_match/2
+    Matchers-->>+Handlers: handle_match/2
+    Handlers->>-Consumer: response(to: sync_event)
   ```
 
   [ASCII representation](https://cascii.app/4164d).
@@ -61,7 +68,7 @@ defmodule Antenna do
   {:antenna_event, channel, event}
   ```
   """
-  @type handler :: (event() -> :ok) | (channel(), event() -> :ok) | Antenna.Matcher.t() | pid() | GenServer.name()
+  @type handler :: (event() -> term()) | (channel(), event() -> term()) | Antenna.Matcher.t() | pid() | GenServer.name()
 
   @id Application.compile_env(:antenna, :id, Antenna)
 
@@ -207,9 +214,26 @@ defmodule Antenna do
 
   The special `:*` might be specified as channels, then the event
     will be sent to all the registered channels.
+
+  If one wants to collect results of all the registered event handlers,
+    they should look at `sync_event/3` instead.
   """
   @spec event(id :: id(), channels :: channel() | [channel()], event :: event()) :: :ok
   def event(id \\ @id, channels, event),
+    do: Broadcaster.async_notify(Antenna.delivery(id), {List.wrap(channels), event})
+
+  @doc """
+  Sends an event to all the associated matchers through channels and collects results.
+
+  The special `:*` might be specified as channels, then the event
+    will be sent to all the registered channels.
+
+  Unlike `event/3`, this call is _synchronous_, which means it would block until
+    all the registered handlers respond; the results would have been collected
+    and returned as a list of no specific order.
+  """
+  @spec sync_event(id :: id(), channels :: channel() | [channel()], event :: event()) :: [term()]
+  def sync_event(id \\ @id, channels, event),
     do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event})
 
   @doc """
