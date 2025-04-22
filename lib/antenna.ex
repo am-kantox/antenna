@@ -12,56 +12,35 @@ defmodule Antenna do
 
   The workflow looks like shown below.
 
-  ```
-                          ┌───────────────┐                                               
-                          │               │       Antenna.event(AntID, :tag1, %{foo: 42}) 
-                          │  Broadcaster  │───────────────────────────────────────────────
-                          │               │                                               
-                          └───────────────┘                                               
-                                ──/──                                                     
-                          ────── /   ─────                                                
-                    ──────      /         ──────                                          
-              ──────           /                ─────                                     
-          ────                /                      ───                                  
-  ┌────────────────┐  ┌────────────────┐       ┌────────────────┐                         
-  │                │  │                │       │                │                         
-  │ Consumer@node1 │  │ Consumer@node1 │   …   │ Consumer@nodeN │                         
-  │                │  │                │       │                │                         
-  └────────────────┘  └────────────────┘       └────────────────┘                         
-          ·                   ·                         ·                                 
-        /   \\               /   \\                     /   \\                               
-      /       \\           /       \\                 /       \\                             
-    ·   mine?   ·       ·   mine?   ·             ·   mine?   ·                           
-      \\       /           \\       /                 \\       /                             
-        \\   /               \\   /                     \\   /                               
-          ·                   ·                         ·                                 
-          │                   │                         │                                 
-          │                   │                         │                                 
-        ─────                 │                       ─────                               
-                              │                                                           
-                              │                                                           
-                       ┌──────────────┐                                                   
-                       │              │             if (match?), do: call_handlers(event) 
-                       │   matchers   │───────────────────────────────────────────────────
-                       │              │                                                   
-                       └──────────────┘                                                   
+  ## Sequence Diagram
+
+  ```mermaid
+  sequenceDiagram
+    Consumer->>+Broadcaster: event(channel, event)
+    Broadcaster-->>+Consumer@Node1: event
+    Broadcaster-->>+Consumer@Node2: event
+    Broadcaster-->>+Consumer@NodeN: event
+    Consumer@Node1-->>-NoOp: mine?
+    Consumer@NodeN-->>-NoOp: mine?
+    Consumer@Node2->>Matchers: event
+    Matchers->>Handlers: handle_match/2
   ```
 
-  ## Usage example
+  [ASCII representation](https://cascii.app/4164d).
+
+  ## Usage Example
 
   The consumer of this library is supposed to declare one or more matchers, subscribing to one
     or more channels, and then call `Antenna.event/2` to propagate the event.
 
   ```elixir
-  assert {:ok, pid1, "{:tag_1, a, _} when is_nil(a)"} =
+  assert {:ok, _pid, "{:tag_1, a, _} when is_nil(a)"} =
     Antenna.match(Antenna, {:tag_1, a, _} when is_nil(a), self(), channels: [:chan_1])
 
   assert :ok = Antenna.event(Antenna, [:chan_1], {:tag_1, nil, 42})
   assert_receive {:antenna_event, :chan_1, {:tag_1, nil, 42}}
   ```
   """
-
-  # Edit/view: https://cascii.app/4164d
 
   alias Antenna.PubSub.Broadcaster
 
