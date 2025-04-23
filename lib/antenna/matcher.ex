@@ -38,11 +38,11 @@ defmodule Antenna.Matcher do
 
   @impl GenServer
   @doc false
-  def init(%__MODULE__{} = state), do: {:ok, state, {:continue, :channels}}
+  def init(%__MODULE__{} = state), do: {:ok, state, {:continue, :fixup}}
 
   @impl GenServer
   @doc false
-  def handle_continue(:channels, %__MODULE__{channels: channels} = state) do
+  def handle_continue(:fixup, %__MODULE__{channels: channels} = state) do
     state.id |> Antenna.subscribe(MapSet.to_list(channels), self())
     state.id |> Antenna.Guard.fix(state.match, self())
 

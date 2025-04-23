@@ -201,6 +201,36 @@ defmodule Antenna do
     |> Enum.each(&leave(id, &1, pid))
   end
 
+  @doc """
+  Adds a handler to the matcher process specified by `pid`
+  """
+  @doc section: :setup
+  @spec handle(id :: id(), handlers :: handler() | [handler()], pid()) :: :ok
+  def handle(id \\ @id, handlers, pid)
+
+  def handle(_, [], _), do: :ok
+
+  def handle(id, handlers, pid) when is_pid(pid) do
+    handlers
+    |> List.wrap()
+    |> Enum.each(&do_handle(id, &1, pid))
+  end
+
+  @doc """
+  Removes a handler from the matcher process specified by `pid`
+  """
+  @doc section: :setup
+  @spec unhandle(id :: id(), handlers :: handler() | [handler()], pid()) :: :ok
+  def unhandle(id \\ @id, handlers, pid)
+
+  def unhandle(_, [], _), do: :ok
+
+  def unhandle(id, handlers, pid) when is_pid(pid) do
+    handlers
+    |> List.wrap()
+    |> Enum.each(&do_unhandle(id, &1, pid))
+  end
+
   @doc false
   @doc section: :internals
   defmacro whereis(id \\ @id, match)
@@ -260,7 +290,7 @@ defmodule Antenna do
     if pid in :pg.get_members(scope, channel) do
       :already_joined
     else
-      :ok = Antenna.Guard.add(id, channel, pid)
+      :ok = Antenna.Guard.add_channel(id, channel, pid)
       :pg.join(scope, channel, pid)
     end
   end
@@ -268,6 +298,18 @@ defmodule Antenna do
   @spec leave(id(), channel(), pid()) :: :ok | :not_joined
   defp leave(id, channel, pid) do
     with :ok <- id |> channels() |> :pg.leave(channel, pid),
-         do: Antenna.Guard.remove(id, channel, pid)
+         do: Antenna.Guard.remove_channel(id, channel, pid)
+  end
+
+  @spec do_handle(id(), handler(), pid()) :: :ok
+  defp do_handle(id, handler, pid) do
+    Antenna.Guard.add_handler(id, handler, pid)
+    GenServer.cast(pid, {:add_handler, handler})
+  end
+
+  @spec do_unhandle(id(), handler(), pid()) :: :ok
+  defp do_unhandle(id, handler, pid) do
+    Antenna.Guard.remove_handler(id, handler, pid)
+    GenServer.cast(pid, {:remove_handler, handler})
   end
 end
