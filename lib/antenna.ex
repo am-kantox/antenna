@@ -93,6 +93,31 @@ defmodule Antenna do
       else: {opts, []}
   end
 
+  # Supervision tree
+  use Supervisor
+
+  def start_link(init_arg) do
+    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+  end
+
+  @impl true
+  def init(id \\ id()) do
+    children = [
+      %{id: :pg, start: {__MODULE__, :start_pg, [Antenna.channels(id)]}},
+      {Antenna.Guard, id: id},
+      {Antenna.PubSub, id: id},
+      {DistributedSupervisor, name: Antenna.matchers(id), monitor_nodes: true}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @doc false
+  @spec start_pg(module()) :: {:ok, pid()} | :ignore
+  def start_pg(scope) do
+    with {:error, {:already_started, _pid}} <- :pg.start_link(scope), do: :ignore
+  end
+
   @doc """
   Declares a matcher for tagged events.
 
