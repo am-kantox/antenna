@@ -10,7 +10,7 @@ defmodule Antenna.Matcher do
   @type t :: module()
 
   @doc "The funcion to be called back upon match"
-  @callback handle_match(Antenna.channel(), Antenna.event()) :: term()
+  @callback handle_match(channel :: Antenna.channel(), event :: Antenna.event()) :: term()
 
   use GenServer
 
@@ -53,12 +53,7 @@ defmodule Antenna.Matcher do
   @doc false
   def handle_cast({:handle_event, channel, event}, state) do
     if state.matcher.(event) do
-      Enum.each(state.handlers, fn
-        handler when is_function(handler, 1) -> handler.(event)
-        handler when is_function(handler, 2) -> handler.(channel, event)
-        process -> send(process, {:antenna_event, channel, event})
-      end)
-
+      Enum.each(state.handlers, &do_handle(&1, channel, event))
       if state.once?, do: DistributedSupervisor.terminate_child(Antenna.matchers(state.id), self())
     end
 
@@ -75,18 +70,16 @@ defmodule Antenna.Matcher do
   @doc false
   def handle_call({:handle_event, channel, event}, _from, state) do
     if state.matcher.(event) do
-      results =
-        Enum.map(state.handlers, fn
-          handler when is_function(handler, 1) -> handler.(event)
-          handler when is_function(handler, 2) -> handler.(channel, event)
-          process -> send(process, {:antenna_event, channel, event})
-        end)
-
+      results = Enum.map(state.handlers, &do_handle(&1, channel, event))
       if state.once?, do: DistributedSupervisor.terminate_child(Antenna.matchers(state.id), self())
-
       {:reply, {:match, %{match: state.match, pid: self(), channel: channel, results: results}}, state}
     else
       {:reply, {:no_match, channel}, state}
     end
   end
+
+  defp do_handle(handler, _channel, event) when is_function(handler, 1), do: handler.(event)
+  defp do_handle(handler, channel, event) when is_function(handler, 2), do: handler.(channel, event)
+  defp do_handle(matcher, channel, event) when is_atom(matcher), do: matcher.handle_match(channel, event)
+  defp do_handle(process, channel, event) when is_pid(process), do: send(process, {:antenna_event, channel, event})
 end

@@ -1,6 +1,20 @@
-defmodule AntennaTest do
+defmodule Antenna.Test do
   use ExUnit.Case, async: true
   doctest Antenna
+
+  defmodule Matcher do
+    @moduledoc false
+    @behaviour Antenna.Matcher
+
+    require Logger
+
+    @impl Antenna.Matcher
+    def handle_match(channel, event) do
+      [channel: channel, event: event]
+      |> inspect()
+      |> Logger.notice()
+    end
+  end
 
   test "straight single node (async)" do
     assert {:ok, pid1, "{:tag_1, a, _} when is_nil(a)"} =
@@ -12,7 +26,7 @@ defmodule AntennaTest do
     assert %Antenna.Guard{groups: %{chan_1: pids}} = :sys.get_state(GenServer.whereis(Antenna.guard(Antenna)))
     assert 1 = MapSet.size(pids)
 
-    assert {:ok, pid2, "{:tag_1, _}"} = Antenna.match(Antenna, {:tag_1, _}, self(), channels: [:chan_1])
+    assert {:ok, pid2, "{:tag_1, _}"} = Antenna.match(Antenna, {:tag_1, _}, [Matcher, self()], channels: [:chan_1])
     assert :ok = Antenna.event(Antenna, [:chan_1], {:tag_1, 42})
     assert_receive {:antenna_event, :chan_1, {:tag_1, 42}}
 
