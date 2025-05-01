@@ -2,18 +2,10 @@ defmodule Antenna.Test do
   use ExUnit.Case, async: true
   doctest Antenna
 
-  defmodule Matcher do
-    @moduledoc false
-    @behaviour Antenna.Matcher
+  alias Antenna.Test.Matcher
 
-    require Logger
-
-    @impl Antenna.Matcher
-    def handle_match(channel, event) do
-      [channel: channel, event: event]
-      |> inspect()
-      |> Logger.notice()
-    end
+  setup_all ctx do
+    Map.put(ctx, :antenna_pid, start_supervised!(Antenna))
   end
 
   test "straight single node (async)" do

@@ -83,6 +83,9 @@ defmodule Antenna.Guard do
   def handle_cast({:fix, name, nil}, state),
     do: handle_cast({:fix, name, name_to_pid(state.id, name)}, state)
 
+  def handle_cast({:fix, name, :undefined}, state),
+    do: handle_cast({:fix, name, name_to_pid(state.id, name)}, state)
+
   def handle_cast({:fix, name, pid}, state) do
     pid = pid && name_to_pid(state.id, name)
 

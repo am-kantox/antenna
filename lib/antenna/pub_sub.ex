@@ -7,13 +7,13 @@ defmodule Antenna.PubSub do
     {id, _opts} = Antenna.id_opts(opts)
     id = Antenna.delivery(id)
 
-    with {:ok, pid} <- DistributedSupervisor.start_link(name: id, monitor_nodes: true),
-         {:ok, _broadcaster_pid, name} <-
-           DistributedSupervisor.start_child(id, {Broadcaster, name: broadcaster_name(id)}),
+    with {{:ok, _pid}, return} <- start_ds(name: id, monitor_nodes: true),
+         {:ok, _broadcaster_pid, name} <- start_dbc(id),
          broadcaster_name <- DistributedSupervisor.via_name(id, name),
          {:ok, _consumer_pid, ref} when is_reference(ref) <-
            DistributedSupervisor.start_child(id, {Consumer, id: id, broadcaster: broadcaster_name}),
-         do: {:ok, pid}
+         do: return,
+         else: (_ -> :ignore)
   end
 
   def child_spec(opts) do
@@ -31,4 +31,20 @@ defmodule Antenna.PubSub do
 
   def broadcaster(id) when is_atom(id),
     do: DistributedSupervisor.whereis(id, broadcaster_name(id))
+
+  def start_ds(opts) do
+    case DistributedSupervisor.start_link(opts) do
+      {:error, {:already_started, pid}} -> {{:ok, pid}, :ignore}
+      {:ok, pid} -> {{:ok, pid}, {:ok, pid}}
+      other -> other
+    end
+  end
+
+  def start_dbc(id) do
+    broadcaster_name = broadcaster_name(id)
+
+    with {:error, {:already_started, pid}} <-
+           DistributedSupervisor.start_child(id, {Broadcaster, name: broadcaster_name}),
+         do: {:ok, pid, broadcaster_name}
+  end
 end

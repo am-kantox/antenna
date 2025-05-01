@@ -49,6 +49,7 @@ defmodule Antenna do
   ```
   """
 
+  require Logger
   alias Antenna.PubSub.Broadcaster
 
   @typedoc "The identifier of the isolated `Antenna`"
@@ -96,12 +97,13 @@ defmodule Antenna do
   # Supervision tree
   use Supervisor
 
-  def start_link(init_arg) do
+  def start_link(init_arg \\ []) do
+    init_arg = if Keyword.keyword?(init_arg), do: Keyword.get_lazy(init_arg, :id, &id/0), else: init_arg
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
   @impl true
-  def init(id \\ id()) do
+  def init(id) do
     children = [
       %{id: :pg, start: {__MODULE__, :start_pg, [Antenna.channels(id)]}},
       {Antenna.Guard, id: id},
@@ -210,6 +212,9 @@ defmodule Antenna do
     |> List.wrap()
     |> Enum.each(&join(id, &1, pid))
   end
+
+  def subscribe(id, channels, pid),
+    do: Logger.warning("Unexpected subscription: " <> inspect(id: id, channels: channels, pid: pid))
 
   @doc """
   Unsubscribes a previously subscribed matcher process specified by `pid` from the channel(s)
