@@ -11,6 +11,7 @@ defmodule Antenna.Enfiladex.Test do
     %{}
   end
 
+  @tag :enfiladex
   test "start, stop", _ctx do
     count = 1
     peers = Enfiladex.start_peers(count)
