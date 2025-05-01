@@ -2,7 +2,7 @@ defmodule Antenna.MixProject do
   use Mix.Project
 
   @app :antenna
-  @version "0.2.2"
+  @version "0.2.3"
 
   def project do
     [
