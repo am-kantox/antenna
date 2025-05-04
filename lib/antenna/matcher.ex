@@ -80,6 +80,18 @@ defmodule Antenna.Matcher do
 
   defp do_handle(handler, _channel, event) when is_function(handler, 1), do: handler.(event)
   defp do_handle(handler, channel, event) when is_function(handler, 2), do: handler.(channel, event)
-  defp do_handle(matcher, channel, event) when is_atom(matcher), do: matcher.handle_match(channel, event)
   defp do_handle(process, channel, event) when is_pid(process), do: send(process, {:antenna_event, channel, event})
+
+  defp do_handle(matcher, channel, event) when is_atom(matcher) do
+    matcher.handle_match(channel, event)
+  rescue
+    e ->
+      require Logger
+      Logger.error("Matcher #{inspect(matcher)} failed to handle event #{inspect(event)}: #{Exception.message(e)}")
+
+      # raise Antenna.MatcherError,
+      #   message: "Matcher #{inspect(matcher)} failed to handle event #{inspect(event)}: #{e.message}"
+
+      {:error, matcher, e}
+  end
 end

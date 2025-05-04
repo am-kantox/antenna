@@ -14,10 +14,10 @@ defmodule Antenna.PubSub.Broadcaster do
   @doc """
   Sends an event and returns only after the event is dispatched.
   """
-  def sync_notify(name \\ Antenna.Matchers, event, timeout \\ 5000) do
+  def sync_notify(id, event, timeout \\ 5000) do
     DistributedSupervisor.call(
-      name,
-      Antenna.PubSub.broadcaster_name(name),
+      id,
+      Antenna.PubSub.broadcaster_name(id),
       {:notify, event},
       timeout
     )
@@ -26,10 +26,10 @@ defmodule Antenna.PubSub.Broadcaster do
   @doc """
   Sends an event and returns immediately.
   """
-  def async_notify(name \\ Antenna.Matchers, event) do
+  def async_notify(id, event) do
     DistributedSupervisor.cast(
-      name,
-      Antenna.PubSub.broadcaster_name(name),
+      id,
+      Antenna.PubSub.broadcaster_name(id),
       {:notify, event}
     )
   end

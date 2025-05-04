@@ -24,5 +24,8 @@ peeper-*.tar
 # Temporary files, for example, from tests.
 /tmp/
 
+# Common Test Logs
+/ct_logs/
+
 # Dialyzer PLTs
 /.dialyzer/*plt*

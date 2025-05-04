@@ -17,15 +17,16 @@ defmodule Antenna.PubSub.Consumer do
   # Callbacks
 
   @impl GenStage
-  def init({id, broadcaster_name}), do: {:consumer, id, subscribe_to: [{broadcaster_name, @broadcaster_opts}]}
+  def init({id, broadcaster_name}),
+    do: {:consumer, id, subscribe_to: [{broadcaster_name, @broadcaster_opts}]}
 
   @impl GenStage
   def handle_events(events, _from, id) do
     results =
       for {from, {channels, event}} <- events,
-          DistributedSupervisor.mine?(id, event),
-          channel <- if(:* in channels, do: :pg.which_groups(Antenna.channels(Antenna)), else: channels),
-          pid <- :pg.get_members(Antenna.channels(Antenna), channel),
+          DistributedSupervisor.mine?(Antenna.delivery(id), event),
+          channel <- if(:* in channels, do: :pg.which_groups(Antenna.channels(id)), else: channels),
+          pid <- :pg.get_members(Antenna.channels(id), channel),
           reduce: %{} do
         acc ->
           result = Antenna.Matcher.handle_event(pid, from, channel, event)

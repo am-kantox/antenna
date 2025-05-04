@@ -71,6 +71,23 @@ defmodule Antenna do
   """
   @type handler :: (event() -> term()) | (channel(), event() -> term()) | Antenna.Matcher.t() | pid() | GenServer.name()
 
+  @typedoc """
+  The options to be passed to `Antenna.match/4` and `Antenna.unmatch/2`
+
+  * `:id` - the identifier of the `Antenna`, defaults to `Antenna`
+  * `:channels` - a list of channels to subscribe the matcher to
+  * `:once?` - if true, the matcher would be removed after the first match
+  """
+  @type opts :: [id: id(), channels: channel() | [channel()], once?: boolean()]
+
+  @typedoc """
+  The matcher to be used for the event, e.g. `{:tag_1, a, _} when is_nil(a)`
+
+  The pattern matching is done on the `Antenna` process, so it might be
+    either a function or a process id.
+  """
+  @type matcher :: term()
+
   @id Application.compile_env(:antenna, :id, Antenna)
 
   @doc false
@@ -99,7 +116,7 @@ defmodule Antenna do
 
   def start_link(init_arg \\ []) do
     init_arg = if Keyword.keyword?(init_arg), do: Keyword.get_lazy(init_arg, :id, &id/0), else: init_arg
-    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+    Supervisor.start_link(__MODULE__, init_arg, name: init_arg)
   end
 
   @impl true
@@ -118,6 +135,12 @@ defmodule Antenna do
   @spec start_pg(module()) :: {:ok, pid()} | :ignore
   def start_pg(scope) do
     with {:error, {:already_started, _pid}} <- :pg.start_link(scope), do: :ignore
+  end
+
+  @doc false
+  defmacro lookup(id \\ @id, match) do
+    name = with ast when not is_binary(ast) <- match, do: Macro.to_string(ast)
+    quote generated: true, location: :keep, do: {unquote(name), Antenna.whereis(unquote(id), unquote(name))}
   end
 
   @doc """
@@ -301,9 +324,9 @@ defmodule Antenna do
     and returned as a list of no specific order.
   """
   @doc section: :client
-  @spec sync_event(id :: id(), channels :: channel() | [channel()], event :: event()) :: [term()]
-  def sync_event(id \\ @id, channels, event),
-    do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event})
+  @spec sync_event(id :: id(), channels :: channel() | [channel()], event :: event(), timeout :: timeout()) :: [term()]
+  def sync_event(id \\ @id, channels, event, timeout \\ 5_000),
+    do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event}, timeout)
 
   @doc """
   Returns a map of matches to matchers

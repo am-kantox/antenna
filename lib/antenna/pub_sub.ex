@@ -5,15 +5,20 @@ defmodule Antenna.PubSub do
 
   def start_link(opts \\ []) do
     {id, _opts} = Antenna.id_opts(opts)
-    id = Antenna.delivery(id)
+    delivery_id = Antenna.delivery(id)
 
-    with {{:ok, _pid}, return} <- start_ds(name: id, monitor_nodes: true),
-         {:ok, _broadcaster_pid, name} <- start_dbc(id),
-         broadcaster_name <- DistributedSupervisor.via_name(id, name),
+    with {{:ok, _pid}, return} <- start_ds(name: delivery_id, monitor_nodes: true),
+         {:ok, _broadcaster_pid, name} <- start_dbc(delivery_id),
+         broadcaster_name <- DistributedSupervisor.via_name(delivery_id, name),
          {:ok, _consumer_pid, ref} when is_reference(ref) <-
-           DistributedSupervisor.start_child(id, {Consumer, id: id, broadcaster: broadcaster_name}),
-         do: return,
-         else: (_ -> :ignore)
+           DistributedSupervisor.start_child(delivery_id, {Consumer, id: id, broadcaster: broadcaster_name}) do
+      return
+    else
+      error ->
+        require Logger
+        Logger.alert("PubSub failed to start at #{node()}: " <> inspect(error))
+        :ignore
+    end
   end
 
   def child_spec(opts) do
