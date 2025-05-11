@@ -1,0 +1,203 @@
+defmodule Antenna.DistributedTest do
+  use ExUnit.Case
+
+  @moduledoc """
+  Test suite for Antenna's distributed functionality. Tests handle multi-node
+  scenarios and verify correct behavior across connected nodes.
+  """
+
+  use Enfiladex.Suite
+
+  @moduletag :skip
+
+  @antenna __MODULE__.ID
+
+  setup do
+    # Start multiple nodes for distributed testing
+    peers = Enfiladex.start_peers(2)
+    on_exit(fn -> Enfiladex.stop_peers(peers) end)
+
+    # Start Antenna on all nodes
+    :ok = Enfiladex.block_call_everywhere(Antenna, :start_link, [[id: @antenna]])
+
+    %{peers: peers}
+  end
+
+  describe "distributed event propagation" do
+    test "propagates events to all nodes", %{peers: _peers} do
+      # Register matcher on current node
+      assert {:ok, _pid1, _} = Antenna.match(@antenna, {:dist_event, _}, self(), channels: [:dist_channel])
+
+      # Register matchers on other nodes via rpc
+      for peer <- Node.list() do
+        :erpc.call(peer, Antenna, :match, [@antenna, {:dist_event, _}, self(), [channels: [:dist_channel]]])
+      end
+
+      # Send event and verify it reaches all nodes
+      assert :ok = Antenna.event(@antenna, [:dist_channel], {:dist_event, "test"})
+
+      # We should receive our local event
+      assert_receive {:antenna_event, :dist_channel, {:dist_event, "test"}}
+
+      # Verify event was received on other nodes
+      for peer <- Node.list() do
+        result = :erpc.call(peer, Process, :info, [self(), :messages])
+        assert {:messages, [{:antenna_event, :dist_channel, {:dist_event, "test"}}]} = result
+      end
+    end
+
+    test "handles node disconnections gracefully", %{peers: [peer | _]} do
+      # Register matchers on both nodes
+      assert {:ok, _pid1, _} = Antenna.match(@antenna, {:disconnect_event, _}, self(), channels: [:disconnect_channel])
+
+      :erpc.call(peer, Antenna, :match, [@antenna, {:disconnect_event, _}, self(), [channels: [:disconnect_channel]]])
+
+      # Verify initial connectivity
+      assert :ok = Antenna.event(@antenna, [:disconnect_channel], {:disconnect_event, "before"})
+      assert_receive {:antenna_event, :disconnect_channel, {:disconnect_event, "before"}}
+
+      # Disconnect the node
+      Node.disconnect(peer)
+      Process.sleep(100)
+
+      # System should continue working locally
+      assert :ok = Antenna.event(@antenna, [:disconnect_channel], {:disconnect_event, "after"})
+      assert_receive {:antenna_event, :disconnect_channel, {:disconnect_event, "after"}}
+
+      # Reconnect node and verify system recovers
+      Node.connect(peer)
+      Process.sleep(100)
+
+      assert :ok = Antenna.event(@antenna, [:disconnect_channel], {:disconnect_event, "recovered"})
+      assert_receive {:antenna_event, :disconnect_channel, {:disconnect_event, "recovered"}}
+    end
+  end
+
+  describe "distributed sync events" do
+    test "collects responses from all nodes", %{peers: _peers} do
+      # Register handlers that return their node name
+      assert {:ok, _pid1, _} =
+               Antenna.match(@antenna, {:sync_event, data}, fn _, {:sync_event, data} -> {:ok, {node(), data}} end,
+                 channels: [:sync_channel]
+               )
+
+      # Register handlers on other nodes
+      for peer <- Node.list() do
+        :erpc.call(peer, Antenna, :match, [
+          @antenna,
+          {:sync_event, data},
+          fn _, {:sync_event, data} -> {:ok, {peer, data}} end,
+          [channels: [:sync_channel]]
+        ])
+      end
+
+      # Send sync event and collect responses
+      results = Antenna.sync_event(@antenna, [:sync_channel], {:sync_event, "test"})
+
+      # Verify we got responses from all nodes
+      all_nodes = [node() | Node.list()]
+
+      for node <- all_nodes do
+        assert Enum.any?(results, fn
+                 {:match, %{results: [{:ok, {^node, "test"}}]}} -> true
+                 _ -> false
+               end)
+      end
+    end
+
+    test "handles timeout across nodes", %{peers: _peers} do
+      # Register slow handlers on all nodes
+      assert {:ok, _pid1, _} =
+               Antenna.match(
+                 @antenna,
+                 {:slow_event, _},
+                 fn _, _ ->
+                   Process.sleep(1000)
+                   :ok
+                 end,
+                 channels: [:timeout_channel]
+               )
+
+      for peer <- Node.list() do
+        :erpc.call(peer, Antenna, :match, [
+          @antenna,
+          {:slow_event, _},
+          fn _, _ ->
+            Process.sleep(1000)
+            :ok
+          end,
+          [channels: [:timeout_channel]]
+        ])
+      end
+
+      # Send sync event with short timeout
+      results = Antenna.sync_event(@antenna, [:timeout_channel], {:slow_event, "test"}, 100)
+
+      # Should get empty results due to timeout
+      assert [] = results
+    end
+  end
+
+  describe "distributed pattern matching" do
+    test "matches patterns consistently across nodes", %{peers: _peers} do
+      # Register same pattern on all nodes
+      pattern = {:complex, x, y} when is_integer(x) and x > 0 and is_binary(y)
+
+      assert {:ok, _pid1, _} = Antenna.match(@antenna, pattern, self(), channels: [:dist_pattern])
+
+      for peer <- Node.list() do
+        :erpc.call(peer, Antenna, :match, [@antenna, pattern, self(), [channels: [:dist_pattern]]])
+      end
+
+      # Test matching event
+      assert :ok = Antenna.event(@antenna, [:dist_pattern], {:complex, 42, "test"})
+
+      # Should match on all nodes
+      assert_receive {:antenna_event, :dist_pattern, {:complex, 42, "test"}}
+
+      for peer <- Node.list() do
+        result = :erpc.call(peer, Process, :info, [self(), :messages])
+        assert {:messages, [{:antenna_event, :dist_pattern, {:complex, 42, "test"}}]} = result
+      end
+
+      # Test non-matching event
+      assert :ok = Antenna.event(@antenna, [:dist_pattern], {:complex, -1, "test"})
+
+      # Should not match on any node
+      refute_receive {:antenna_event, :dist_pattern, {:complex, -1, "test"}}, 100
+
+      for peer <- Node.list() do
+        result = :erpc.call(peer, Process, :info, [self(), :messages])
+        assert {:messages, []} = result
+      end
+    end
+  end
+
+  describe "distributed cleanup" do
+    test "handles node crashes gracefully", %{peers: [peer | _]} do
+      # Register handlers on both nodes
+      assert {:ok, _pid1, _} = Antenna.match(@antenna, {:crash_event, _}, self(), channels: [:crash_channel])
+
+      :erpc.call(peer, Antenna, :match, [@antenna, {:crash_event, _}, self(), [channels: [:crash_channel]]])
+
+      # Verify initial setup
+      assert :ok = Antenna.event(@antenna, [:crash_channel], {:crash_event, "before"})
+      assert_receive {:antenna_event, :crash_channel, {:crash_event, "before"}}
+
+      # Simulate node crash by force disconnecting
+      :erlang.disconnect_node(peer)
+      Process.sleep(100)
+
+      # System should continue working locally
+      assert :ok = Antenna.event(@antenna, [:crash_channel], {:crash_event, "after"})
+      assert_receive {:antenna_event, :crash_channel, {:crash_event, "after"}}
+
+      # Cleanup should have occurred
+      guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
+      assert %Antenna.Guard{groups: groups} = guard_state
+
+      crash_channel_pids = groups[:crash_channel]
+      assert Enum.all?(MapSet.to_list(crash_channel_pids), &Process.alive?/1)
+    end
+  end
+end

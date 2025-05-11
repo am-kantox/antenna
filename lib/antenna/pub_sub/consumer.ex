@@ -1,5 +1,44 @@
 defmodule Antenna.PubSub.Consumer do
-  @moduledoc false
+  @moduledoc """
+  A GenStage consumer that processes events from the Broadcaster and distributes them to matchers.
+
+  The Consumer is responsible for:
+  - Subscribing to the Broadcaster
+  - Filtering events for the current node
+  - Distributing events to appropriate matchers
+  - Collecting and forwarding responses for synchronous events
+
+  ## Node-specific Processing
+
+  The Consumer implements node-specific event filtering:
+  - Only processes events meant for the current node
+  - Uses `DistributedSupervisor.mine?/2` for filtering
+  - Prevents duplicate event processing in distributed setups
+
+  ## Channel Distribution
+
+  Events are distributed based on channel subscriptions:
+  - Supports wildcard channel `:*` for broadcasting to all channels
+  - Maintains separate channel groups using `:pg`
+  - Efficiently delivers events only to interested matchers
+
+  ## Configuration
+
+  Consumer behavior can be configured through the `:broadcaster_opts`:
+
+  ```elixir
+  config :antenna,
+    broadcaster_opts: [
+      max_demand: 1000,  # Maximum number of events to request
+      min_demand: 500    # Threshold for requesting more events
+    ]
+  ```
+
+  The above configuration helps tune the event flow based on your system's needs:
+  - Higher values improve throughput but use more memory
+  - Lower values reduce memory usage but may impact throughput
+  - Default values are suitable for most use cases
+  """
 
   use GenStage
 

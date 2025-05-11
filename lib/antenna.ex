@@ -14,7 +14,45 @@ defmodule Antenna do
 
   One can have as many isolated `Antenna`s as necessary, distinguished by `Antenna.t:id/0`.
 
-  The workflow looks like shown below.
+  ## Getting Started
+
+  To start using Antenna, add it to your dependencies in mix.exs:
+
+  ```elixir
+  def deps do
+    [
+      {:antenna, "~> 0.3.0"}
+    ]
+  end
+  ```
+
+  Then add it to your supervision tree:
+
+  ```elixir
+  defmodule MyApp.Application do
+    use Application
+
+    def start(_type, _args) do
+      children = [
+        Antenna
+      ]
+
+      opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+      Supervisor.start_link(children, opts)
+    end
+  end
+  ```
+
+  ## Configuration
+
+  Antenna can be configured in your config.exs:
+
+  ```elixir
+  config :antenna,
+    id: MyApp.Antenna,           # Optional custom identifier
+    distributed: true,           # Enable distributed mode (default: true)
+    sync_timeout: 5_000          # Default timeout for sync_event/4
+  ```
 
   ## Sequence Diagram
 
@@ -35,6 +73,75 @@ defmodule Antenna do
 
   [ASCII representation](https://cascii.app/4164d).
 
+  ## Common Use Cases
+
+  ### Basic Event Handling
+
+  ```elixir
+  # Define a matcher for specific events
+  Antenna.match(MyApp.Antenna, {:user_registered, user_id, _meta}, fn channel, event ->
+    # Handle the event
+    {:user_registered, user_id, meta} = event
+    Logger.info("New user registered: \#{user_id} on channel \#{channel}")
+    MyApp.UserNotifier.welcome(user_id)
+  end, channels: [:user_events])
+
+  # Send events
+  Antenna.event(MyApp.Antenna, [:user_events], {:user_registered, "user123", %{source: "web"}})
+  ```
+
+  ### Error Handling
+
+  ```elixir
+  # Match on error events
+  Antenna.match(MyApp.Antenna, {:error, reason, _context} = event, fn channel, event ->
+    # Log and handle errors
+    Logger.error("Error on channel \#{channel}: \#{inspect(event)}")
+    MyApp.ErrorTracker.track(event)
+  end, channels: [:errors])
+
+  # Send error events
+  Antenna.event(MyApp.Antenna, [:errors], {:error, :validation_failed, %{user_id: 123}})
+  ```
+
+  ### Distributed Setup
+
+  Antenna automatically handles distribution when nodes are connected:
+
+  ```elixir
+  # On node1@host1
+  Node.connect(:"node2@host2")
+  Antenna.match(MyApp.Antenna, {:replicate, data}, fn _, {:replicate, data} ->
+    MyApp.Storage.replicate(data)
+  end, channels: [:replication])
+
+  # On node2@host2
+  Antenna.event(MyApp.Antenna, [:replication], {:replicate, some_data})
+  # The event will be processed on both nodes
+  ```
+
+  ### Custom Matchers
+
+  You can use pattern matching and guards in your matchers:
+
+  ```elixir
+  # Match on specific patterns with guards
+  Antenna.match(MyApp.Antenna, 
+    {:temperature, celsius, _} when celsius > 30,
+    fn _, {:temperature, c, location} ->
+      Logger.warning("High temperature (\#{c}°C) detected at \#{location}")
+    end,
+    channels: [:sensors])
+
+  # Match on map patterns
+  Antenna.match(MyApp.Antenna,
+    %{event: :payment, amount: amount} when amount > 1000,
+    fn _, event ->
+      MyApp.LargePaymentProcessor.handle(event)
+    end,
+    channels: [:payments])
+  ```
+
   ## Usage Example
 
   The consumer of this library is supposed to declare one or more matchers, subscribing to one
@@ -47,6 +154,53 @@ defmodule Antenna do
   assert :ok = Antenna.event(Antenna, [:chan_1], {:tag_1, nil, 42})
   assert_receive {:antenna_event, :chan_1, {:tag_1, nil, 42}}
   ```
+
+  ## Architecture
+
+  Antenna uses a distributed pub/sub architecture with the following components:
+
+  1. **Broadcaster** - Handles event distribution across nodes
+  2. **Matchers** - Pattern match on events and delegate to handlers
+  3. **Guard** - Manages channel subscriptions and handler registration
+  4. **PubSub** - Implements the core pub/sub functionality
+
+  Events flow through the system as follows:
+
+  1. Client calls `event/3` or `sync_event/4`
+  2. Broadcaster distributes the event to all nodes
+  3. Matchers on each node pattern match against the event
+  4. Matching handlers process the event
+  5. For sync_event, responses are collected and returned
+
+  ## Best Practices
+
+  1. **Channel Organization**
+     - Use atoms for channel names
+     - Group related events under common channels
+     - Consider using hierarchical channel names (e.g., :users_created, :users_updated)
+
+  2. **Pattern Matching**
+     - Use specific patterns to avoid unnecessary pattern matches
+     - Include guards for more precise matching
+     - Consider the order of pattern matches when using multiple matchers
+
+  3. **Handler Design**
+     - Keep handlers focused and single-purpose
+     - Use `sync_event/4` when you need responses
+     - Consider timeouts for sync operations
+     - Handle errors within handlers to prevent cascade failures
+
+  4. **Performance**
+     - Use async events (`event/3`) when possible
+     - Keep handler processing time minimal
+     - Consider using separate processes for long-running operations
+     - Monitor matcher and handler counts
+
+  5. **Testing**
+     - Test matchers with various event patterns
+     - Verify handler behavior
+     - Test distributed scenarios
+     - Use ExUnit's async: true when possible
   """
 
   require Logger
@@ -146,13 +300,56 @@ defmodule Antenna do
   @doc """
   Declares a matcher for tagged events.
 
-  ### Example
+  This function sets up a pattern matcher to handle specific events on the given channels.
+  When an event matching the pattern is sent to any of the channels, the provided handler
+  will be invoked.
+
+  ## Options
+
+  * `:channels` - A list of channels to subscribe this matcher to
+  * `:once?` - If true, the matcher will be automatically unmatched after the first match (default: false)
+
+  ## Examples
+
+  ### Basic Usage
 
   ```elixir
   Antenna.match(Antenna, %{tag: _, success: false}, fn channel, message ->
     Logger.warning("The processing failed for [" <> 
       inspect(channel) <> "], result: " <> inspect(message))
   end, channels: [:rabbit])
+  ```
+
+  ### One-time Matcher
+
+  ```elixir
+  # This matcher will only trigger once and then be removed
+  Antenna.match(Antenna, {:init, pid}, fn _, {:init, pid} ->
+    send(pid, :initialized)
+  end, channels: [:system], once?: true)
+  ```
+
+  ### Using Pattern Guards
+
+  ```elixir
+  Antenna.match(Antenna, 
+    {:metric, name, value} when value > 100, 
+    fn channel, event ->
+      Logger.info("High metric value on \#{channel}: \#{inspect(event)}")
+    end, 
+    channels: [:metrics])
+  ```
+
+  ### Multiple Channels
+
+  ```elixir
+  Antenna.match(Antenna, 
+    {:user_event, user_id, _action},
+    fn channel, event ->
+      # Handle user events from multiple channels
+      MyApp.UserEventTracker.track(channel, event)
+    end,
+    channels: [:user_logins, :user_actions, :user_settings])
   ```
   """
   @doc section: :setup
@@ -169,17 +366,23 @@ defmodule Antenna do
 
       opts = unquote(opts)
 
-      DistributedSupervisor.start_child(
-        Antenna.matchers(unquote(id)),
-        {Antenna.Matcher,
-         name: unquote(name),
-         id: unquote(id),
-         match: unquote(name),
-         matcher: matcher,
-         handlers: List.wrap(unquote(handlers)),
-         channels: List.wrap(Keyword.get(opts, :channels)),
-         once?: Keyword.get(opts, :once?, false)}
-      )
+      with {:ok, pid, name} <-
+             DistributedSupervisor.start_child(
+               Antenna.matchers(unquote(id)),
+               {Antenna.Matcher,
+                name: unquote(name),
+                id: unquote(id),
+                match: unquote(name),
+                matcher: matcher,
+                handlers: List.wrap(unquote(handlers)),
+                channels: List.wrap(Keyword.get(opts, :channels)),
+                once?: Keyword.get(opts, :once?, false)}
+             ) do
+        # Antenna.handle(unquote(id), unquote(handlers), pid)
+        unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
+
+        {:ok, pid, name}
+      end
     end
   end
 
@@ -198,8 +401,10 @@ defmodule Antenna do
   @doc section: :setup
   defmacro unmatch(id \\ @id, match) do
     quote generated: true, location: :keep do
-      with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)),
-           do: DistributedSupervisor.terminate_child(Antenna.matchers(unquote(id)), pid)
+      with pid when is_pid(pid) <- Antenna.whereis(unquote(id), unquote(match)) do
+        Antenna.unhandle_all(unquote(id), pid)
+        DistributedSupervisor.terminate_child(Antenna.matchers(unquote(id)), pid)
+      end
     end
   end
 
@@ -269,6 +474,10 @@ defmodule Antenna do
     |> Enum.each(&do_handle(id, &1, pid))
   end
 
+  @doc false
+  @spec unhandle_all(id :: id(), pid()) :: :ok
+  def unhandle_all(id \\ @id, pid), do: do_unhandle(id, pid)
+
   @doc """
   Removes a handler from the matcher process specified by `pid`
   """
@@ -307,6 +516,28 @@ defmodule Antenna do
 
   If one wants to collect results of all the registered event handlers,
     they should look at `sync_event/3` instead.
+
+  ## Examples
+
+  ### Basic Usage
+
+  ```elixir
+  # Send event to a single channel
+  Antenna.event(MyApp.Antenna, :user_events, {:user_logged_in, "user123"})
+
+  # Send event to multiple channels
+  Antenna.event(MyApp.Antenna, [:logs, :metrics], {:api_call, "/users", 200, 45})
+
+  # Send event to all channels
+  Antenna.event(MyApp.Antenna, :*, {:system_notification, :service_starting})
+  ```
+
+  ### Custom Antenna ID
+
+  ```elixir
+  # Using a specific Antenna instance
+  Antenna.event(MyBackgroundJobs.Antenna, :jobs, {:job_completed, "job-123"})
+  ```
   """
   @doc section: :client
   @spec event(id :: id(), channels :: channel() | [channel()], event :: event()) :: :ok
@@ -314,14 +545,54 @@ defmodule Antenna do
     do: Broadcaster.async_notify(Antenna.delivery(id), {List.wrap(channels), event})
 
   @doc """
-  Sends an event to all the associated matchers through channels and collects results.
+  Sends an event to all the associated matchers through channels synchronously,
+  collecting and returning responses from all handlers.
 
   The special `:*` might be specified as channels, then the event
-    will be sent to all the registered channels.
+  will be sent to all the registered channels.
 
-  Unlike `event/3`, this call is _synchronous_, which means it would block until
-    all the registered handlers respond; the results would have been collected
-    and returned as a list of no specific order.
+  Unlike `event/3`, this function waits for all handlers to process the event
+  and returns their responses.
+
+  ## Parameters
+
+  * `id` - The Antenna instance identifier (optional, defaults to configured value)
+  * `channels` - Single channel or list of channels to send the event to
+  * `event` - The event to be sent
+  * `timeout` - Maximum time to wait for responses (default: 5000ms)
+
+  ## Examples
+
+  ### Basic Usage
+
+  ```elixir
+  # Send sync event and collect responses
+  results = Antenna.sync_event(MyApp.Antenna, :user_events, {:verify_user, "user123"})
+
+  # Send to multiple channels with custom timeout
+  results = Antenna.sync_event(
+    MyApp.Antenna,
+    [:validations, :security],
+    {:user_action, "user123", :delete_account},
+    10_000
+  )
+  ```
+
+  ### Response Format
+
+  The function returns a list of handler responses, each wrapped in a tuple
+  indicating whether the pattern matched and including the handler's result:
+
+  ```elixir
+  [
+    {:match, %{
+      match: "pattern_string",
+      channel: :channel_name,
+      results: [handler_result]
+    }},
+    {:no_match, :channel_name}
+  ]
+  ```
   """
   @doc section: :client
   @spec sync_event(id :: id(), channels :: channel() | [channel()], event :: event(), timeout :: timeout()) :: [term()]
@@ -358,6 +629,12 @@ defmodule Antenna do
   defp do_handle(id, handler, pid) do
     Antenna.Guard.add_handler(id, handler, pid)
     GenServer.cast(pid, {:add_handler, handler})
+  end
+
+  @spec do_unhandle(id(), pid()) :: :ok
+  defp do_unhandle(id, pid) do
+    Antenna.Guard.remove_all_handlers(id, pid)
+    GenServer.cast(pid, :remove_all_handlers)
   end
 
   @spec do_unhandle(id(), handler(), pid()) :: :ok

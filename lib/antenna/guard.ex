@@ -12,6 +12,7 @@ defmodule Antenna.Guard do
   def remove_channel(id, channel, pid), do: id |> Antenna.guard() |> GenServer.cast({:remove_channel, channel, pid})
   def add_handler(id, handler, pid), do: id |> Antenna.guard() |> GenServer.cast({:add_handler, handler, pid})
   def remove_handler(id, handler, pid), do: id |> Antenna.guard() |> GenServer.cast({:remove_handler, handler, pid})
+  def remove_all_handlers(id, pid), do: id |> Antenna.guard() |> GenServer.cast({:remove_all_handlers, pid})
 
   def fix(id, name, pid \\ nil), do: id |> Antenna.guard() |> GenServer.cast({:fix, name, pid})
   def all(id, name), do: id |> Antenna.guard() |> GenServer.call({:all, name})
@@ -61,7 +62,7 @@ defmodule Antenna.Guard do
     handlers =
       case pid_to_name(state.id, pid) do
         nil -> state.handlers
-        name -> Map.update(state.handlers, name, [handler], &[handler | &1])
+        name -> Map.update(state.handlers, name, [handler], &Enum.uniq([handler | &1]))
       end
 
     {:noreply, %__MODULE__{state | handlers: handlers}}
@@ -75,6 +76,16 @@ defmodule Antenna.Guard do
 
         name ->
           Map.update(state.handlers, name, [handler], fn handlers -> Enum.reject(handlers, &(handler == &1)) end)
+      end
+
+    {:noreply, %__MODULE__{state | handlers: handlers}}
+  end
+
+  def handle_cast({:remove_all_handlers, pid}, state) do
+    handlers =
+      case pid_to_name(state.id, pid) do
+        nil -> state.handlers
+        name -> Map.delete(state.handlers, name)
       end
 
     {:noreply, %__MODULE__{state | handlers: handlers}}

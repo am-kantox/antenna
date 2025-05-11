@@ -61,10 +61,13 @@ defmodule Antenna.Matcher do
   end
 
   def handle_cast({:add_handler, handler}, state),
-    do: {:noreply, %__MODULE__{state | handlers: [handler | state.handlers]}}
+    do: {:noreply, %__MODULE__{state | handlers: Enum.uniq([handler | state.handlers])}}
 
   def handle_cast({:remove_handler, handler}, state),
     do: {:noreply, %__MODULE__{state | handlers: Enum.reject(state.handlers, &(&1 == handler))}}
+
+  def handle_cast(:remove_all_handlers, state),
+    do: {:noreply, %__MODULE__{state | handlers: []}}
 
   @impl GenServer
   @doc false

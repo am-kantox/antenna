@@ -1,5 +1,44 @@
 defmodule Antenna.PubSub.Broadcaster do
-  @moduledoc false
+  @moduledoc """
+  A GenStage producer that handles event broadcasting in the Antenna system.
+
+  The Broadcaster is responsible for:
+  - Receiving events from clients
+  - Managing event queues
+  - Implementing back-pressure
+  - Distributing events to consumers
+
+  ## Event Types
+
+  The Broadcaster supports two types of event delivery:
+
+  1. **Synchronous** (`sync_notify/3`)
+     - Waits for event delivery before returning
+     - Collects responses from handlers
+     - Useful when you need confirmation of event processing
+
+  2. **Asynchronous** (`async_notify/2`)
+     - Returns immediately after queueing the event
+     - No response collection
+     - Better performance for high-throughput scenarios
+
+  ## Back-pressure
+
+  The Broadcaster implements GenStage's demand-driven flow control:
+  - Events are queued when demand is low
+  - Events are dispatched based on consumer demand
+  - Prevents system overload during high event volume
+
+  ## Examples
+
+  ```elixir
+  # Synchronous notification with response collection
+  responses = Broadcaster.sync_notify(MyApp.Antenna, {:user_event, user_data}, 5000)
+
+  # Asynchronous notification
+  :ok = Broadcaster.async_notify(MyApp.Antenna, {:background_task, task_data})
+  ```
+  """
 
   use GenStage
 

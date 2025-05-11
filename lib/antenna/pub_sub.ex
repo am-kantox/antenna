@@ -1,5 +1,52 @@
 defmodule Antenna.PubSub do
-  @moduledoc false
+  @moduledoc """
+  The Pub/Sub system that powers Antenna's event distribution.
+
+  This module implements a distributed publish/subscribe system using GenStage,
+  allowing for efficient event broadcasting across nodes with back-pressure support.
+
+  ## Architecture
+
+  The PubSub system consists of three main components:
+
+  1. **Broadcaster** (`Antenna.PubSub.Broadcaster`)
+     - Acts as a GenStage producer
+     - Handles event broadcasting
+     - Manages event queuing and demand
+     - Supports both synchronous and asynchronous event delivery
+
+  2. **Consumer** (`Antenna.PubSub.Consumer`)
+     - Acts as a GenStage consumer
+     - Receives events from the broadcaster
+     - Distributes events to appropriate matchers
+     - Handles node-specific event filtering
+
+  3. **Supervisor** (`Antenna.PubSub`)
+     - Manages the lifecycle of broadcasters and consumers
+     - Handles distributed supervision
+     - Ensures proper startup and shutdown of components
+
+  ## Event Flow
+
+  1. Events are sent to the Broadcaster (sync or async)
+  2. Broadcaster queues events and handles back-pressure
+  3. Consumer receives events based on demand
+  4. Consumer filters events for the current node
+  5. Events are distributed to matching handlers
+
+  ## Configuration
+
+  The PubSub system can be configured in your config.exs:
+
+  ```elixir
+  config :antenna,
+    broadcaster_opts: [
+      # Options passed to GenStage.sync_subscribe/3
+      max_demand: 1000,
+      min_demand: 500
+    ]
+  ```
+  """
 
   alias Antenna.PubSub.{Broadcaster, Consumer}
 

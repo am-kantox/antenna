@@ -54,12 +54,14 @@ defmodule Antenna.MixProject do
       {:credo, "~> 1.0", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:mneme, "~> 0.6", only: [:dev, :test]},
-      {:ex_doc, ">= 0.0.0", only: [:dev]}
+      {:ex_doc, ">= 0.0.0", only: [:dev]},
+      {:propcheck, "~> 1.4", only: [:test]}
     ]
   end
 
   defp aliases do
     [
+      test: ["test --exclude enfiladex"],
       quality: ["format", "credo --strict", "dialyzer"],
       "quality.ci": [
         "format --check-formatted",
