@@ -1,5 +1,7 @@
 defmodule Antenna.PubSub.Broadcaster do
-  @moduledoc """
+  @moduledoc false
+
+  _moduledoc = """
   A GenStage producer that handles event broadcasting in the Antenna system.
 
   The Broadcaster is responsible for:

@@ -268,12 +268,18 @@ defmodule Antenna do
   # Supervision tree
   use Supervisor
 
+  @doc """
+  Starts the `Antenna` matcher tree for the `id` given. 
+  """
+  @doc section: :setup
+  @spec start_link([{:id, atom()}]) :: Supervisor.on_start()
   def start_link(init_arg \\ []) do
     init_arg = if Keyword.keyword?(init_arg), do: Keyword.get_lazy(init_arg, :id, &id/0), else: init_arg
     Supervisor.start_link(__MODULE__, init_arg, name: init_arg)
   end
 
-  @impl true
+  @impl Supervisor
+  @doc false
   def init(id) do
     children = [
       %{id: :pg, start: {__MODULE__, :start_pg, [Antenna.channels(id)]}},
@@ -284,6 +290,14 @@ defmodule Antenna do
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  @doc """
+  Returns a specification to start this module under a supervisor.
+
+  See `Supervisor`.
+  """
+  @doc section: :setup
+  def child_spec(init_arg), do: super(init_arg)
 
   @doc false
   @spec start_pg(module()) :: {:ok, pid()} | :ignore

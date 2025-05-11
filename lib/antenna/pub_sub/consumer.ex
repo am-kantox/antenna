@@ -1,5 +1,7 @@
 defmodule Antenna.PubSub.Consumer do
-  @moduledoc """
+  @moduledoc false
+
+  _moduledoc = """
   A GenStage consumer that processes events from the Broadcaster and distributes them to matchers.
 
   The Consumer is responsible for:

@@ -1,5 +1,7 @@
 defmodule Antenna.PubSub do
-  @moduledoc """
+  @moduledoc false
+
+  _moduledoc = """
   The Pub/Sub system that powers Antenna's event distribution.
 
   This module implements a distributed publish/subscribe system using GenStage,
