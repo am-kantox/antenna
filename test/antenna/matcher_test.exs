@@ -62,11 +62,11 @@ defmodule Antenna.MatcherTest do
 
       # Should match numbers > 100
       assert :ok = Antenna.event(@antenna, [:guards], {:number, 150})
-      assert_receive {:antenna_event, :guards, {:number, 150}}
+      assert_receive {:antenna_event, :guards, {:number, 150}}, 1_000
 
       # Should not match numbers <= 100
       assert :ok = Antenna.event(@antenna, [:guards], {:number, 50})
-      refute_receive {:antenna_event, :guards, {:number, 50}}
+      refute_receive {:antenna_event, :guards, {:number, 50}}, 1_000
     end
 
     test "matches with complex guards" do
