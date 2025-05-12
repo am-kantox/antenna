@@ -20,7 +20,12 @@ defmodule Antenna.Matcher do
   @doc false
   def start_link(opts) do
     {name, opts} = Keyword.pop!(opts, :name)
-    opts = opts |> Keyword.put_new(:once?, false) |> Keyword.update(:channels, MapSet.new(), &MapSet.new/1)
+
+    opts =
+      opts
+      |> Keyword.put_new(:once?, false)
+      |> Keyword.update(:channels, MapSet.new(), &MapSet.new/1)
+      |> Keyword.update(:handlers, MapSet.new(), &MapSet.new/1)
 
     GenServer.start_link(__MODULE__, struct!(__MODULE__, opts), name: name)
   end
@@ -61,13 +66,13 @@ defmodule Antenna.Matcher do
   end
 
   def handle_cast({:add_handler, handler}, state),
-    do: {:noreply, %__MODULE__{state | handlers: Enum.uniq([handler | state.handlers])}}
+    do: {:noreply, %__MODULE__{state | handlers: MapSet.put(state.handlers, handler)}}
 
   def handle_cast({:remove_handler, handler}, state),
-    do: {:noreply, %__MODULE__{state | handlers: Enum.reject(state.handlers, &(&1 == handler))}}
+    do: {:noreply, %__MODULE__{state | handlers: MapSet.delete(state.handlers, handler)}}
 
   def handle_cast(:remove_all_handlers, state),
-    do: {:noreply, %__MODULE__{state | handlers: []}}
+    do: {:noreply, %__MODULE__{state | handlers: MapSet.new([])}}
 
   @impl GenServer
   @doc false
