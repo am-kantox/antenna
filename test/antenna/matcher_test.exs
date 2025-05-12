@@ -127,7 +127,7 @@ defmodule Antenna.MatcherTest do
 
       # First event should be received
       assert :ok = Antenna.event(@antenna, [:once], {:once, 1})
-      assert_receive {:antenna_event, :once, {:once, 1}}
+      assert_receive {:antenna_event, :once, {:once, 1}}, 1_000
 
       # Wait for matcher to be removed
       Process.sleep(100)

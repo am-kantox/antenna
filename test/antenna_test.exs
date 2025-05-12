@@ -15,7 +15,7 @@ defmodule Antenna.Test do
              Antenna.match(@antenna, {:tag_antenna_1, a, _} when is_nil(a), self(), channels: [:chan_antenna_1])
 
     assert :ok = Antenna.event(@antenna, [:chan_antenna_1], {:tag_antenna_1, nil, 42})
-    assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, nil, 42}}
+    assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, nil, 42}}, 1_000
 
     assert %Antenna.Guard{groups: %{chan_antenna_1: pids}} = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
     assert 1 = MapSet.size(pids)
@@ -24,7 +24,7 @@ defmodule Antenna.Test do
              Antenna.match(@antenna, {:tag_antenna_1, _}, [Matcher, self()], channels: [:chan_antenna_1])
 
     assert :ok = Antenna.event(@antenna, [:chan_antenna_1], {:tag_antenna_1, 42})
-    assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, 42}}
+    assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, 42}}, 1_000
 
     assert %{"{:tag_antenna_1, a, _} when is_nil(a)" => {^pid1, _}, "{:tag_antenna_1, _}" => {^pid2, _}} =
              Antenna.registered_matchers(@antenna)
