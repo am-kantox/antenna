@@ -97,7 +97,7 @@ defmodule Antenna.MixProject do
       canonical: "http://hexdocs.pm/#{@app}",
       logo: "stuff/#{@app}-48x48.png",
       source_url: "https://github.com/am-kantox/#{@app}",
-      extras: ~w[README.md],
+      extras: ~w[README.md stuff/why-antenna.md stuff/diy-message-broker.md],
       groups_for_modules: [],
       groups_for_docs: [
         "Functions (Client)": &(&1[:section] == :client),
