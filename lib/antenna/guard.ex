@@ -14,7 +14,8 @@ defmodule Antenna.Guard do
   def remove_handler(id, handler, pid), do: id |> Antenna.guard() |> GenServer.cast({:remove_handler, handler, pid})
   def remove_all_handlers(id, pid), do: id |> Antenna.guard() |> GenServer.cast({:remove_all_handlers, pid})
 
-  def fix(id, name, pid \\ nil), do: id |> Antenna.guard() |> GenServer.cast({:fix, name, pid})
+  def fix(state, pid \\ nil), do: state.id |> Antenna.guard() |> GenServer.call({:fix, state, pid})
+  def all(id), do: id |> Antenna.guard() |> GenServer.call(:all)
   def all(id, name), do: id |> Antenna.guard() |> GenServer.call({:all, name})
 
   # Callbacks
@@ -38,7 +39,7 @@ defmodule Antenna.Guard do
     channels =
       case pid_to_name(state.id, pid) do
         nil -> state.channels
-        name -> Map.update(state.channels, name, [channel], &[channel | &1])
+        name -> Map.update(state.channels, name, MapSet.new([channel]), &MapSet.put(&1, channel))
       end
 
     {:noreply, %__MODULE__{state | channels: channels}}
@@ -47,11 +48,8 @@ defmodule Antenna.Guard do
   def handle_cast({:remove_channel, channel, pid}, state) do
     channels =
       case pid_to_name(state.id, pid) do
-        nil ->
-          state.channels
-
-        name ->
-          Map.update(state.channels, name, [channel], fn channels -> Enum.reject(channels, &(channel == &1)) end)
+        nil -> state.channels
+        name -> Map.update(state.channels, name, MapSet.new(), &MapSet.delete(&1, channel))
       end
 
     {:noreply, %__MODULE__{state | channels: channels}}
@@ -62,7 +60,7 @@ defmodule Antenna.Guard do
     handlers =
       case pid_to_name(state.id, pid) do
         nil -> state.handlers
-        name -> Map.update(state.handlers, name, [handler], &Enum.uniq([handler | &1]))
+        name -> Map.update(state.handlers, name, MapSet.new([handler]), &MapSet.put(&1, handler))
       end
 
     {:noreply, %__MODULE__{state | handlers: handlers}}
@@ -71,11 +69,8 @@ defmodule Antenna.Guard do
   def handle_cast({:remove_handler, handler, pid}, state) do
     handlers =
       case pid_to_name(state.id, pid) do
-        nil ->
-          state.handlers
-
-        name ->
-          Map.update(state.handlers, name, [handler], fn handlers -> Enum.reject(handlers, &(handler == &1)) end)
+        nil -> state.handlers
+        name -> Map.update(state.handlers, name, MapSet.new(), &MapSet.delete(&1, handler))
       end
 
     {:noreply, %__MODULE__{state | handlers: handlers}}
@@ -91,27 +86,32 @@ defmodule Antenna.Guard do
     {:noreply, %__MODULE__{state | handlers: handlers}}
   end
 
-  def handle_cast({:fix, name, nil}, state),
-    do: handle_cast({:fix, name, name_to_pid(state.id, name)}, state)
+  def handle_call({:fix, %{id: id} = match_state, unexpected}, from, %{id: id} = state)
+      when unexpected in [nil, :undefined, :restarting],
+      do: handle_call({:fix, match_state, name_to_pid(id, match_state.match)}, from, state)
 
-  def handle_cast({:fix, name, :undefined}, state),
-    do: handle_cast({:fix, name, name_to_pid(state.id, name)}, state)
+  def handle_call({:fix, %{id: id} = match_state, pid}, _from, %{id: id} = state) when is_pid(pid) do
+    name = match_state.match
 
-  def handle_cast({:fix, name, :restarting}, state),
-    do: handle_cast({:fix, name, name_to_pid(state.id, name)}, state)
+    channels = state.channels |> Map.get(name, MapSet.new()) |> MapSet.union(match_state.channels)
+    Antenna.subscribe(state.id, channels, pid)
+    handlers = state.handlers |> Map.get(name, MapSet.new()) |> MapSet.union(match_state.handlers)
+    Antenna.handle(state.id, handlers, pid)
 
-  def handle_cast({:fix, name, pid}, state) do
-    pid = pid && name_to_pid(state.id, name)
-
-    Antenna.subscribe(state.id, Map.get(state.channels, name, []), pid)
-    Antenna.handle(state.id, Map.get(state.handlers, name, []), pid)
-
-    {:noreply, state}
+    {:reply, %{match_state | channels: channels, handlers: handlers}, %{state | channels: channels, handlers: handlers}}
   end
 
   @impl GenServer
-  def handle_call({:all, name}, _from, state),
-    do: {:reply, %{channels: Map.get(state.channels, name, []), handlers: Map.get(state.handlers, name, [])}, state}
+  def handle_call(:all, _from, state) do
+    {:reply, Map.take(state, [:handlers, :channels]), state}
+  end
+
+  @impl GenServer
+  def handle_call({:all, name}, _from, state) do
+    {:reply,
+     %{channels: Map.get(state.channels, name, MapSet.new()), handlers: Map.get(state.handlers, name, MapSet.new())},
+     state}
+  end
 
   @impl GenServer
   def handle_info({ref, :join, group, pids}, %__MODULE__{reference: ref} = state) do

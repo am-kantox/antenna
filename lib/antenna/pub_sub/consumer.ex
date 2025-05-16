@@ -76,7 +76,7 @@ defmodule Antenna.PubSub.Consumer do
 
     Enum.each(results, fn
       {nil, _} -> :ok
-      {from, results} -> GenStage.reply(from, results)
+      {{from, _timeout, _raise?}, results} -> GenStage.reply(from, results)
     end)
 
     {:noreply, [], id}

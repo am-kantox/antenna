@@ -38,8 +38,18 @@ defmodule Antenna.Matcher do
   def handle_event(me, nil, channel, event),
     do: GenServer.cast(me, {:handle_event, channel, event})
 
-  def handle_event(me, _from, channel, event),
-    do: GenServer.call(me, {:handle_event, channel, event})
+  def handle_event(me, {_from, timeout, true}, channel, event) do
+    GenServer.call(me, {:handle_event, channel, event}, timeout)
+  end
+
+  def handle_event(me, {_from, timeout, false}, channel, event) do
+    try do
+      GenServer.call(me, {:handle_event, channel, event}, timeout)
+    catch
+      :exit, timeout_error ->
+        {:error, timeout_error}
+    end
+  end
 
   @impl GenServer
   @doc false
@@ -47,11 +57,8 @@ defmodule Antenna.Matcher do
 
   @impl GenServer
   @doc false
-  def handle_continue(:fixup, %__MODULE__{channels: channels} = state) do
-    state.id |> Antenna.subscribe(MapSet.to_list(channels), self())
-    state.id |> Antenna.Guard.fix(state.match, self())
-
-    {:noreply, state}
+  def handle_continue(:fixup, %__MODULE__{} = state) do
+    {:noreply, Antenna.Guard.fix(state, self())}
   end
 
   @impl GenServer
@@ -86,9 +93,27 @@ defmodule Antenna.Matcher do
     end
   end
 
-  defp do_handle(handler, _channel, event) when is_function(handler, 1), do: handler.(event)
-  defp do_handle(handler, channel, event) when is_function(handler, 2), do: handler.(channel, event)
   defp do_handle(process, channel, event) when is_pid(process), do: send(process, {:antenna_event, channel, event})
+
+  defp do_handle(handler, _channel, event) when is_function(handler, 1) do
+    handler.(event)
+  rescue
+    e ->
+      require Logger
+      Logger.error("Anonymous handler function failed to handle event #{inspect(event)}: #{Exception.message(e)}")
+
+      {:error, handler, e}
+  end
+
+  defp do_handle(handler, channel, event) when is_function(handler, 2) do
+    handler.(channel, event)
+  rescue
+    e ->
+      require Logger
+      Logger.error("Anonymous handler function failed to handle event #{inspect(event)}: #{Exception.message(e)}")
+
+      {:error, handler, e}
+  end
 
   defp do_handle(matcher, channel, event) when is_atom(matcher) do
     matcher.handle_match(channel, event)

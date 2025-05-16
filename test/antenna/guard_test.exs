@@ -69,7 +69,7 @@ defmodule Antenna.GuardTest do
 
       # Verify handler registration
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
-      assert %Antenna.Guard{handlers: %{"{:event_4, _}" => [_handler]}} = guard_state
+      assert %Antenna.Guard{handlers: %{"{:event_4, _}" => %MapSet{}}} = guard_state
     end
 
     test "unregisters handlers on unmatch" do
@@ -79,7 +79,7 @@ defmodule Antenna.GuardTest do
 
       # Verify initial registration
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
-      assert %Antenna.Guard{handlers: %{"{:event_5, _}" => [_handler]}} = guard_state
+      assert %Antenna.Guard{handlers: %{"{:event_5, _}" => %MapSet{}}} = guard_state
 
       # Unmatch and verify removal
       assert :ok = Antenna.unmatch(@antenna, {:event_5, _})

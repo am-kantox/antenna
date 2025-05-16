@@ -392,8 +392,9 @@ defmodule Antenna do
                 channels: List.wrap(Keyword.get(opts, :channels)),
                 once?: Keyword.get(opts, :once?, false)}
              ) do
+        # [AM] What needs to be added?
         # Antenna.handle(unquote(id), unquote(handlers), pid)
-        unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
+        # unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
 
         {:ok, pid, name}
       end
@@ -447,7 +448,9 @@ defmodule Antenna do
   @spec subscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
   def subscribe(id \\ @id, channels, pid)
 
+  def subscribe(_, nil, _), do: :ok
   def subscribe(_, [], _), do: :ok
+  def subscribe(id, %MapSet{} = mapset, pid), do: subscribe(id, MapSet.to_list(mapset), pid)
 
   def subscribe(id, channels, pid) when is_pid(pid) do
     channels
@@ -465,7 +468,9 @@ defmodule Antenna do
   @spec unsubscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
   def unsubscribe(id \\ @id, channels, pid)
 
+  def unsubscribe(_, nil, _), do: :ok
   def unsubscribe(_, [], _), do: :ok
+  def unsubscribe(id, %MapSet{} = mapset, pid), do: unsubscribe(id, MapSet.to_list(mapset), pid)
 
   def unsubscribe(id, channels, pid) when is_pid(pid) do
     channels
@@ -480,7 +485,9 @@ defmodule Antenna do
   @spec handle(id :: id(), handlers :: handler() | [handler()], pid()) :: :ok
   def handle(id \\ @id, handlers, pid)
 
+  def handle(_, nil, _), do: :ok
   def handle(_, [], _), do: :ok
+  def handle(id, %MapSet{} = mapset, pid), do: handle(id, MapSet.to_list(mapset), pid)
 
   def handle(id, handlers, pid) when is_pid(pid) do
     handlers
@@ -499,7 +506,9 @@ defmodule Antenna do
   @spec unhandle(id :: id(), handlers :: handler() | [handler()], pid()) :: :ok
   def unhandle(id \\ @id, handlers, pid)
 
+  def unhandle(_, nil, _), do: :ok
   def unhandle(_, [], _), do: :ok
+  def unhandle(id, %MapSet{} = mapset, pid), do: unhandle(id, MapSet.to_list(mapset), pid)
 
   def unhandle(id, handlers, pid) when is_pid(pid) do
     handlers
@@ -609,9 +618,29 @@ defmodule Antenna do
   ```
   """
   @doc section: :client
-  @spec sync_event(id :: id(), channels :: channel() | [channel()], event :: event(), timeout :: timeout()) :: [term()]
-  def sync_event(id \\ @id, channels, event, timeout \\ 5_000),
-    do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event}, timeout)
+  @spec sync_event(
+          id :: id(),
+          channels :: channel() | [channel()],
+          event :: event(),
+          timeout :: timeout(),
+          extra_timeout :: timeout()
+        ) :: [term()]
+  def sync_event(id \\ @id, channels, event, timeout \\ 5_000, extra_timeout \\ 100),
+    do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event}, timeout, extra_timeout, false)
+
+  @doc false
+  @doc section: :client
+  @spec sync_event!(
+          id :: id(),
+          channels :: channel() | [channel()],
+          event :: event(),
+          timeout :: timeout(),
+          extra_timeout :: timeout()
+        ) :: [
+          term() | :noreturn
+        ]
+  def sync_event!(id \\ @id, channels, event, timeout \\ 5_000, extra_timeout \\ 100),
+    do: Broadcaster.sync_notify(Antenna.delivery(id), {List.wrap(channels), event}, timeout, extra_timeout, true)
 
   @doc """
   Returns a map of matches to matchers

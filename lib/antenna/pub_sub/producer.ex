@@ -55,12 +55,12 @@ defmodule Antenna.PubSub.Broadcaster do
   @doc """
   Sends an event and returns only after the event is dispatched.
   """
-  def sync_notify(id, event, timeout \\ 5000) do
+  def sync_notify(id, event, timeout, extra_timeout, raise?) do
     DistributedSupervisor.call(
       id,
       Antenna.PubSub.broadcaster_name(id),
-      {:notify, event},
-      timeout
+      {:notify, event, timeout, raise?},
+      timeout + extra_timeout
     )
   end
 
@@ -79,8 +79,8 @@ defmodule Antenna.PubSub.Broadcaster do
 
   def init(_opts), do: {:producer, {:queue.new(), 0}, dispatcher: GenStage.BroadcastDispatcher}
 
-  def handle_call({:notify, event}, from, {queue, demand}),
-    do: dispatch_events(:queue.in({from, event}, queue), demand, [])
+  def handle_call({:notify, event, timeout, raise?}, from, {queue, demand}),
+    do: dispatch_events(:queue.in({{from, timeout, raise?}, event}, queue), demand, [])
 
   def handle_cast({:notify, event}, {queue, demand}),
     do: dispatch_events(:queue.in({nil, event}, queue), demand, [])
