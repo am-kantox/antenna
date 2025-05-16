@@ -43,12 +43,10 @@ defmodule Antenna.Matcher do
   end
 
   def handle_event(me, {_from, timeout, false}, channel, event) do
-    try do
-      GenServer.call(me, {:handle_event, channel, event}, timeout)
-    catch
-      :exit, timeout_error ->
-        {:error, timeout_error}
-    end
+    GenServer.call(me, {:handle_event, channel, event}, timeout)
+  catch
+    :exit, timeout_error ->
+      {:error, timeout_error}
   end
 
   @impl GenServer

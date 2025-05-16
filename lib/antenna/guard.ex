@@ -86,6 +86,7 @@ defmodule Antenna.Guard do
     {:noreply, %__MODULE__{state | handlers: handlers}}
   end
 
+  @impl GenServer
   def handle_call({:fix, %{id: id} = match_state, unexpected}, from, %{id: id} = state)
       when unexpected in [nil, :undefined, :restarting],
       do: handle_call({:fix, match_state, name_to_pid(id, match_state.match)}, from, state)
@@ -101,7 +102,6 @@ defmodule Antenna.Guard do
     {:reply, %{match_state | channels: channels, handlers: handlers}, %{state | channels: channels, handlers: handlers}}
   end
 
-  @impl GenServer
   def handle_call(:all, _from, state) do
     {:reply, Map.take(state, [:handlers, :channels]), state}
   end

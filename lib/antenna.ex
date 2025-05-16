@@ -471,7 +471,7 @@ defmodule Antenna do
   Subscribes a matcher process specified by `pid` to a channel(s)
   """
   @doc section: :setup
-  @spec subscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
+  @spec subscribe(id :: id(), channels :: channel() | [channel()] | MapSet.t(), pid()) :: :ok
   def subscribe(id \\ @id, channels, pid)
 
   def subscribe(_, nil, _), do: :ok
@@ -491,7 +491,7 @@ defmodule Antenna do
   Unsubscribes a previously subscribed matcher process specified by `pid` from the channel(s)
   """
   @doc section: :setup
-  @spec unsubscribe(id :: id(), channels :: channel() | [channel()], pid()) :: :ok
+  @spec unsubscribe(id :: id(), channels :: channel() | [channel()] | MapSet.t(), pid()) :: :ok
   def unsubscribe(id \\ @id, channels, pid)
 
   def unsubscribe(_, nil, _), do: :ok
@@ -508,7 +508,7 @@ defmodule Antenna do
   Adds a handler to the matcher process specified by `pid`
   """
   @doc section: :setup
-  @spec handle(id :: id(), handlers :: handler() | [handler()], pid()) :: :ok
+  @spec handle(id :: id(), handlers :: handler() | [handler()] | MapSet.t(), pid()) :: :ok
   def handle(id \\ @id, handlers, pid)
 
   def handle(_, nil, _), do: :ok
@@ -529,7 +529,7 @@ defmodule Antenna do
   Removes a handler from the matcher process specified by `pid`
   """
   @doc section: :setup
-  @spec unhandle(id :: id(), handlers :: handler() | [handler()], pid()) :: :ok
+  @spec unhandle(id :: id(), handlers :: handler() | [handler()] | MapSet.t(), pid()) :: :ok
   def unhandle(id \\ @id, handlers, pid)
 
   def unhandle(_, nil, _), do: :ok
