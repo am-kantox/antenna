@@ -65,7 +65,7 @@ defmodule Antenna.PubSub do
     else
       error ->
         require Logger
-        Logger.alert("PubSub failed to start at #{node()}: " <> inspect(error))
+        Logger.alert("[📡] PubSub failed to start at #{node()}: " <> inspect(error))
         :ignore
     end
   end

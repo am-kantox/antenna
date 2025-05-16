@@ -35,8 +35,6 @@ defmodule Antenna.Enfiladex.Test do
       assert {:ok, pid2, "{:tag_enfiladex_1, _}"} =
                Antenna.match(@antenna, {:tag_enfiladex_1, _}, [Matcher, self()], channels: [:chan_enfiladex_1])
 
-      Process.sleep(100)
-
       assert :ok = Antenna.event(@antenna, [:chan_enfiladex_1], {:tag_enfiladex_1, 42})
       assert_receive {:antenna_event, :chan_enfiladex_1, {:tag_enfiladex_1, 42}}
 
@@ -48,7 +46,6 @@ defmodule Antenna.Enfiladex.Test do
 
       assert ^pids = MapSet.new([pid1, pid2])
       assert :ok = Antenna.unmatch(@antenna, {:tag_enfiladex_1, a, _} when is_nil(a))
-      Process.sleep(100)
 
       assert :ok = Antenna.event(@antenna, [:chan_enfiladex_1], {:tag_enfiladex_1, 42})
       assert_receive {:antenna_event, :chan_enfiladex_1, {:tag_enfiladex_1, 42}}

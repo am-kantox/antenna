@@ -16,7 +16,6 @@ defmodule Antenna.PubSubTest do
   describe "basic pub/sub functionality" do
     test "handles single publisher, single subscriber" do
       assert {:ok, _pid, _} = Antenna.match(@antenna, {:test_event, _}, [self()], channels: [:test_channel])
-      Process.sleep(200)
       assert :ok = Antenna.event(@antenna, [:test_channel], {:test_event, "data"})
 
       assert_receive {:antenna_event, :test_channel, {:test_event, "data"}}, 1_000
@@ -25,12 +24,9 @@ defmodule Antenna.PubSubTest do
     test "handles multiple subscribers" do
       # Create two subscribers
       assert {:ok, pid, _} = Antenna.match(@antenna, {:multi_event, _}, [self()], channels: [:multi_channel])
-      Process.sleep(200)
 
       assert {:error, {:already_started, ^pid}} =
                Antenna.match(@antenna, {:multi_event, _}, [self()], channels: [:multi_channel])
-
-      Process.sleep(200)
 
       # Send event and verify both receive it
       assert :ok = Antenna.event(@antenna, [:multi_channel], {:multi_event, "data"})
@@ -107,14 +103,11 @@ defmodule Antenna.PubSubTest do
       assert {:ok, _pid, _} =
                Antenna.match(@antenna, {:crash_event, _}, fn _, _ -> raise "crash" end, channels: [:crash_channel])
 
-      Process.sleep(100)
-
       # Send event - should not crash the system
       assert :ok = Antenna.event(@antenna, [:crash_channel], {:crash_event, "data"})
 
       # System should still work
       assert {:ok, _pid2, _} = Antenna.match(@antenna, {:normal_event, _}, [self()], channels: [:crash_channel])
-      Process.sleep(100)
       assert :ok = Antenna.event(@antenna, [:crash_channel], {:normal_event, "data"})
 
       assert_receive {:antenna_event, :crash_channel, {:normal_event, "data"}}, 1_000

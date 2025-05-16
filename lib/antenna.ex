@@ -401,10 +401,10 @@ defmodule Antenna do
 
           receive do
             {:antenna_matcher, ^pid} ->
-              Logger.notice("Matcher ‹" <> unquote(name) <> "› started synchronously")
+              Logger.debug("[📡] Matcher ‹" <> unquote(name) <> "› started synchronously")
           after
             timeout ->
-              Logger.error("Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›")
+              Logger.error("[📡] Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›")
           end
         end
 
@@ -475,7 +475,7 @@ defmodule Antenna do
   end
 
   def subscribe(id, channels, pid),
-    do: Logger.warning("Unexpected subscription: " <> inspect(id: id, channels: channels, pid: pid))
+    do: Logger.warning("[📡] Unexpected subscription: " <> inspect(id: id, channels: channels, pid: pid))
 
   @doc """
   Unsubscribes a previously subscribed matcher process specified by `pid` from the channel(s)

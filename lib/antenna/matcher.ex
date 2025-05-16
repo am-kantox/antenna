@@ -102,7 +102,7 @@ defmodule Antenna.Matcher do
   rescue
     e ->
       require Logger
-      Logger.error("Anonymous handler function failed to handle event #{inspect(event)}: #{Exception.message(e)}")
+      Logger.error("[📡] Anonymous handler function failed to handle event #{inspect(event)}: #{Exception.message(e)}")
 
       {:error, handler, e}
   end
@@ -112,7 +112,7 @@ defmodule Antenna.Matcher do
   rescue
     e ->
       require Logger
-      Logger.error("Anonymous handler function failed to handle event #{inspect(event)}: #{Exception.message(e)}")
+      Logger.error("[📡] Anonymous handler function failed to handle event #{inspect(event)}: #{Exception.message(e)}")
 
       {:error, handler, e}
   end
@@ -122,7 +122,7 @@ defmodule Antenna.Matcher do
   rescue
     e ->
       require Logger
-      Logger.error("Matcher #{inspect(matcher)} failed to handle event #{inspect(event)}: #{Exception.message(e)}")
+      Logger.error("[📡] Matcher #{inspect(matcher)} failed to handle event #{inspect(event)}: #{Exception.message(e)}")
 
       # raise Antenna.MatcherError,
       #   message: "Matcher #{inspect(matcher)} failed to handle event #{inspect(event)}: #{e.message}"

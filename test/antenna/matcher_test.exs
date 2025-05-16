@@ -16,7 +16,6 @@ defmodule Antenna.MatcherTest do
   describe "basic pattern matching" do
     test "matches exact patterns" do
       assert {:ok, _pid, _} = Antenna.match(@antenna, {:exact, 42}, [self()], channels: [:exact])
-      Process.sleep(200)
 
       # Should match exact value
       assert :ok = Antenna.event(@antenna, [:exact], {:exact, 42})
@@ -29,7 +28,6 @@ defmodule Antenna.MatcherTest do
 
     test "matches wildcards" do
       assert {:ok, _pid, _} = Antenna.match(@antenna, {:wild, _}, [self()], channels: [:wild])
-      Process.sleep(200)
 
       # Should match any second element
       assert :ok = Antenna.event(@antenna, [:wild], {:wild, 1})
@@ -41,7 +39,6 @@ defmodule Antenna.MatcherTest do
 
     test "matches with pin operator" do
       assert {:ok, _pid, _} = Antenna.match(@antenna, {:pin, 42}, [self()], channels: [:pin])
-      Process.sleep(200)
 
       # Should match pinned value
       assert :ok = Antenna.event(@antenna, [:pin], {:pin, 42})
@@ -63,8 +60,6 @@ defmodule Antenna.MatcherTest do
                  channels: [:guards]
                )
 
-      Process.sleep(200)
-
       # Should match numbers > 100
       assert :ok = Antenna.event(@antenna, [:guards], {:number, 150})
       assert_receive {:antenna_event, :guards, {:number, 150}}, 1_000
@@ -82,8 +77,6 @@ defmodule Antenna.MatcherTest do
                  [self()],
                  channels: [:complex]
                )
-
-      Process.sleep(200)
 
       # Should match valid inputs
       assert :ok = Antenna.event(@antenna, [:complex], {:complex, 1, "test"})
@@ -108,8 +101,6 @@ defmodule Antenna.MatcherTest do
                  channels: [:maps]
                )
 
-      Process.sleep(200)
-
       # Should match valid maps
       assert :ok = Antenna.event(@antenna, [:maps], %{type: :user, data: %{age: 25}})
       assert_receive {:antenna_event, :maps, %{type: :user, data: %{age: 25}}}
@@ -133,8 +124,6 @@ defmodule Antenna.MatcherTest do
                  channels: [:once],
                  once?: true
                )
-
-      Process.sleep(200)
 
       # First event should be received
       assert :ok = Antenna.event(@antenna, [:once], {:once, 1})

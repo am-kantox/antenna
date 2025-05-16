@@ -18,7 +18,6 @@ defmodule Antenna.GuardTest do
     test "registers channels correctly" do
       # Create a matcher that subscribes to multiple channels
       assert {:ok, pid, _} = Antenna.match(@antenna, {:event_1, _}, self(), channels: [:channel_1_1, :channel_1_2])
-      Process.sleep(10)
 
       # Verify channel registration in guard state
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
@@ -30,7 +29,6 @@ defmodule Antenna.GuardTest do
 
     test "unregisters channels on unmatch" do
       assert {:ok, pid, _} = Antenna.match(@antenna, {:event_2, _}, self(), channels: [:remove_test])
-      Process.sleep(10)
 
       # Verify initial registration
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
@@ -39,7 +37,6 @@ defmodule Antenna.GuardTest do
 
       # Unmatch and verify removal
       assert :ok = Antenna.unmatch(@antenna, {:event_2, _})
-      Process.sleep(100)
 
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
       assert %Antenna.Guard{groups: groups} = guard_state
@@ -50,7 +47,6 @@ defmodule Antenna.GuardTest do
       # Register multiple matchers to same channel
       assert {:ok, pid1, _} = Antenna.match(@antenna, {:event_3_1, _}, self(), channels: [:shared_channel])
       assert {:ok, pid2, _} = Antenna.match(@antenna, {:event_3_2, _}, self(), channels: [:shared_channel])
-      Process.sleep(10)
 
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
       assert %Antenna.Guard{groups: groups} = guard_state
@@ -65,7 +61,6 @@ defmodule Antenna.GuardTest do
     test "registers handlers correctly" do
       handler = fn _, _ -> :ok end
       assert {:ok, _pid, _} = Antenna.match(@antenna, {:event_4, _}, handler, channels: [:handler_test])
-      Process.sleep(10)
 
       # Verify handler registration
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
@@ -75,7 +70,6 @@ defmodule Antenna.GuardTest do
     test "unregisters handlers on unmatch" do
       handler = fn _, _ -> :ok end
       assert {:ok, _pid, _} = Antenna.match(@antenna, {:event_5, _}, handler, channels: [:handler_remove])
-      Process.sleep(10)
 
       # Verify initial registration
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
@@ -83,7 +77,7 @@ defmodule Antenna.GuardTest do
 
       # Unmatch and verify removal
       assert :ok = Antenna.unmatch(@antenna, {:event_5, _})
-      Process.sleep(500)
+      Process.sleep(100)
 
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
       assert %Antenna.Guard{handlers: handlers} = guard_state
@@ -96,7 +90,6 @@ defmodule Antenna.GuardTest do
 
       assert {:ok, pid, _} = Antenna.match(@antenna, {:event_6, _}, [handler1], channels: [:multi_handler])
       Antenna.handle(@antenna, handler2, pid)
-      Process.sleep(100)
 
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
       assert %Antenna.Guard{handlers: %{"{:event_6, _}" => handlers}} = guard_state

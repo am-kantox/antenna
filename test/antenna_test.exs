@@ -14,8 +14,6 @@ defmodule Antenna.Test do
     assert {:ok, pid1, "{:tag_antenna_1, a, _} when is_nil(a)"} =
              Antenna.match(@antenna, {:tag_antenna_1, a, _} when is_nil(a), self(), channels: [:chan_antenna_1])
 
-    Process.sleep(200)
-
     assert :ok = Antenna.event(@antenna, [:chan_antenna_1], {:tag_antenna_1, nil, 42})
     assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, nil, 42}}, 1_000
 
@@ -24,8 +22,6 @@ defmodule Antenna.Test do
 
     assert {:ok, pid2, "{:tag_antenna_1, _}"} =
              Antenna.match(@antenna, {:tag_antenna_1, _}, [Matcher, self()], channels: [:chan_antenna_1])
-
-    Process.sleep(200)
 
     assert :ok = Antenna.event(@antenna, [:chan_antenna_1], {:tag_antenna_1, 42})
     assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, 42}}, 1_000
@@ -36,7 +32,6 @@ defmodule Antenna.Test do
     assert %Antenna.Guard{groups: %{chan_antenna_1: pids}} = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
     assert ^pids = MapSet.new([pid1, pid2])
     assert :ok = Antenna.unmatch(@antenna, {:tag_antenna_1, a, _} when is_nil(a))
-    Process.sleep(100)
 
     assert :ok = Antenna.event(@antenna, [:chan_antenna_1], {:tag_antenna_1, 42})
     assert_receive {:antenna_event, :chan_antenna_1, {:tag_antenna_1, 42}}
@@ -64,8 +59,6 @@ defmodule Antenna.Test do
     assert {:ok, pid1, "{:tag_3, a, _} when is_nil(a)"} =
              Antenna.match(@antenna, {:tag_3, a, _} when is_nil(a), self(), channels: [:chan_3])
 
-    Process.sleep(200)
-
     assert [
              match: %{
                match: "{:tag_3, a, _} when is_nil(a)",
@@ -81,7 +74,6 @@ defmodule Antenna.Test do
     assert 1 = MapSet.size(pids)
 
     assert {:ok, pid2, "{:tag_3, _}"} = Antenna.match(@antenna, {:tag_3, _}, self(), channels: [:chan_3])
-    Process.sleep(200)
 
     assert [
              {:no_match, :chan_3},
@@ -93,7 +85,6 @@ defmodule Antenna.Test do
     assert %Antenna.Guard{groups: %{chan_3: pids}} = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
     assert ^pids = MapSet.new([pid1, pid2])
     assert :ok = Antenna.unmatch(@antenna, {:tag_3, a, _} when is_nil(a))
-    Process.sleep(200)
 
     assert [
              match: %{
@@ -125,8 +116,6 @@ defmodule Antenna.Test do
                end,
                channels: [:channel_a, :channel_b, :channel_c]
              )
-
-    Process.sleep(200)
 
     # Test broadcasting to a specific channel
     assert :ok = Antenna.event(@antenna, :channel_a, {:multi_channel_event, "test A"})
@@ -286,8 +275,6 @@ defmodule Antenna.Test do
 
     assert is_pid(pid3)
 
-    Process.sleep(200)
-
     # Test specific channel event delivery
     assert :ok = Antenna.event(@antenna, :channel_y, {:star_event, target: :channel_y})
     assert_receive {:star_received, :channel_y, :channel_y, {:star_event, target: :channel_y}}, 1_000
@@ -402,7 +389,6 @@ defmodule Antenna.Test do
              )
 
     assert is_pid(timeout_pid)
-    Process.sleep(200)
 
     # Using a very short timeout (100ms) should result in timeout
     try do
@@ -463,7 +449,6 @@ defmodule Antenna.Test do
              )
 
     assert is_pid(error_pid)
-    Process.sleep(200)
 
     # Test normal case
     assert :ok = Antenna.event(@antenna, :error_channel, {:error_test, action: :ok})
