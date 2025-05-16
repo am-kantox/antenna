@@ -37,6 +37,7 @@ defmodule Antenna.GuardTest do
 
       # Unmatch and verify removal
       assert :ok = Antenna.unmatch(@antenna, {:event_2, _})
+      Process.sleep(100)
 
       guard_state = :sys.get_state(GenServer.whereis(Antenna.guard(@antenna)))
       assert %Antenna.Guard{groups: groups} = guard_state
