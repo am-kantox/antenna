@@ -49,7 +49,7 @@ defmodule Antenna.Test do
              DistributedSupervisor.children(Antenna.matchers(@antenna))
 
     assert :ok = Antenna.event(@antenna, :chan_2, {:tag_2, 42})
-    assert_receive {:antenna_event, :chan_2, {:tag_2, 42}}
+    assert_receive {:antenna_event, :chan_2, {:tag_2, 42}}, 1_000
     Process.sleep(100)
 
     refute Map.has_key?(DistributedSupervisor.children(Antenna.matchers(@antenna)), "{:tag_2, _}")

@@ -254,6 +254,8 @@ defmodule Antenna do
   def channels(id), do: Module.concat(id, Channels)
   @doc false
   def guard(id), do: Module.concat(id, Guard)
+  @doc false
+  def match_runner(id), do: Module.concat(id, Runner)
 
   @doc false
   def id_opts(%{id: id} = opts), do: {id, Map.delete(opts, :id)}
@@ -283,6 +285,7 @@ defmodule Antenna do
   def init(id) do
     children = [
       %{id: :pg, start: {__MODULE__, :start_pg, [Antenna.channels(id)]}},
+      {Task.Supervisor, name: Antenna.match_runner(id)},
       {Antenna.Guard, id: id},
       {Antenna.PubSub, id: id},
       {DistributedSupervisor, name: Antenna.matchers(id), monitor_nodes: true}
@@ -378,42 +381,49 @@ defmodule Antenna do
         _ -> false
       end
 
+      handlers = unquote(handlers)
+
       opts = unquote(opts)
 
       {sync?, opts} = Keyword.pop(opts, :sync?, true)
       {timeout, opts} = Keyword.pop(opts, :timeout, 5_000)
 
-      with {:ok, pid, name} <-
-             DistributedSupervisor.start_child(
-               Antenna.matchers(unquote(id)),
-               {Antenna.Matcher,
-                name: unquote(name),
-                id: unquote(id),
-                match: unquote(name),
-                matcher: matcher,
-                handlers: List.wrap(unquote(handlers)),
-                channels: List.wrap(Keyword.get(opts, :channels)),
-                once?: Keyword.get(opts, :once?, false),
-                caller: if(sync?, do: self())}
-             ) do
-        if sync? do
-          require Logger
+      task =
+        Task.Supervisor.async(Antenna.match_runner(unquote(id)), fn ->
+          with {:ok, pid, name} <-
+                 DistributedSupervisor.start_child(
+                   Antenna.matchers(unquote(id)),
+                   {Antenna.Matcher,
+                    name: unquote(name),
+                    id: unquote(id),
+                    match: unquote(name),
+                    matcher: matcher,
+                    handlers: List.wrap(handlers),
+                    channels: List.wrap(Keyword.get(opts, :channels)),
+                    once?: Keyword.get(opts, :once?, false),
+                    caller: if(sync?, do: self())}
+                 ) do
+            if sync? do
+              require Logger
 
-          receive do
-            {:antenna_matcher, ^pid} ->
-              Logger.debug("[📡] Matcher ‹" <> unquote(name) <> "› started synchronously")
-          after
-            timeout ->
-              Logger.error("[📡] Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›")
+              receive do
+                {:antenna_matcher, ^pid} ->
+                  Logger.debug("[📡] Matcher ‹" <> unquote(name) <> "› started synchronously")
+              after
+                timeout ->
+                  Logger.error("[📡] Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›")
+              end
+            end
+
+            # [AM] What needs to be added?
+            # Antenna.handle(unquote(id), unquote(handlers), pid)
+            # unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
+
+            {:ok, pid, name}
           end
-        end
+        end)
 
-        # [AM] What needs to be added?
-        # Antenna.handle(unquote(id), unquote(handlers), pid)
-        # unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
-
-        {:ok, pid, name}
-      end
+      Task.await(task)
     end
   end
 
