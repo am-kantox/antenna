@@ -15,7 +15,7 @@ defmodule Antenna.Matcher do
   use GenServer
 
   @enforce_keys [:id, :match, :matcher, :handlers]
-  defstruct [:id, :match, :matcher, :handlers, :channels, :once?]
+  defstruct [:id, :match, :matcher, :handlers, :channels, :once?, :caller]
 
   @doc false
   def start_link(opts) do
@@ -58,7 +58,9 @@ defmodule Antenna.Matcher do
   @impl GenServer
   @doc false
   def handle_continue(:fixup, %__MODULE__{} = state) do
-    {:noreply, Antenna.Guard.fix(state, self())}
+    state = Antenna.Guard.fix(state, self())
+    with pid when is_pid(pid) <- state.caller, do: send(pid, {:antenna_matcher, self()})
+    {:noreply, state}
   end
 
   @impl GenServer

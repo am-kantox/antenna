@@ -380,6 +380,9 @@ defmodule Antenna do
 
       opts = unquote(opts)
 
+      {sync?, opts} = Keyword.pop(opts, :sync?, true)
+      {timeout, opts} = Keyword.pop(opts, :timeout, 5_000)
+
       with {:ok, pid, name} <-
              DistributedSupervisor.start_child(
                Antenna.matchers(unquote(id)),
@@ -390,8 +393,21 @@ defmodule Antenna do
                 matcher: matcher,
                 handlers: List.wrap(unquote(handlers)),
                 channels: List.wrap(Keyword.get(opts, :channels)),
-                once?: Keyword.get(opts, :once?, false)}
+                once?: Keyword.get(opts, :once?, false),
+                caller: if(sync?, do: self())}
              ) do
+        if sync? do
+          require Logger
+
+          receive do
+            {:antenna_matcher, ^pid} ->
+              Logger.notice("Matcher ‹" <> unquote(name) <> "› started synchronously")
+          after
+            timeout ->
+              Logger.error("Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›")
+          end
+        end
+
         # [AM] What needs to be added?
         # Antenna.handle(unquote(id), unquote(handlers), pid)
         # unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
