@@ -376,54 +376,64 @@ defmodule Antenna do
     name = Macro.to_string(match)
 
     quote generated: true, location: :keep do
-      matcher = fn
-        unquote(match) -> true
-        _ -> false
-      end
-
       handlers = unquote(handlers)
-
       opts = unquote(opts)
 
-      {sync?, opts} = Keyword.pop(opts, :sync?, true)
-      {timeout, opts} = Keyword.pop(opts, :timeout, 5_000)
-
-      task =
-        Task.Supervisor.async(Antenna.match_runner(unquote(id)), fn ->
-          with {:ok, pid, name} <-
-                 DistributedSupervisor.start_child(
-                   Antenna.matchers(unquote(id)),
-                   {Antenna.Matcher,
-                    name: unquote(name),
-                    id: unquote(id),
-                    match: unquote(name),
-                    matcher: matcher,
-                    handlers: List.wrap(handlers),
-                    channels: List.wrap(Keyword.get(opts, :channels)),
-                    once?: Keyword.get(opts, :once?, false),
-                    caller: if(sync?, do: self())}
-                 ) do
-            if sync? do
-              require Logger
-
-              receive do
-                {:antenna_matcher, ^pid} ->
-                  Logger.debug("[📡] Matcher ‹" <> unquote(name) <> "› started synchronously")
-              after
-                timeout ->
-                  Logger.error("[📡] Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›")
-              end
-            end
-
-            # [AM] What needs to be added?
-            # Antenna.handle(unquote(id), unquote(handlers), pid)
-            # unquote(handlers) |> List.wrap() |> Enum.each(&Antenna.Guard.add_handler(unquote(id), &1, pid))
-
-            {:ok, pid, name}
+      case Antenna.Guard.name_to_pid(unquote(id), unquote(name)) do
+        pid when is_pid(pid) ->
+          if Keyword.get_lazy(opts, :subsequent_matches?, fn ->
+               Application.get_env(:antenna, :subsequent_matches?, false)
+             end) do
+            Antenna.handle(unquote(id), handlers, pid)
+            Antenna.subscribe(unquote(id), List.wrap(Keyword.get(opts, :channels)), pid)
           end
-        end)
 
-      Task.await(task)
+          {:error, {:already_started, pid}}
+
+        :undefined ->
+          matcher = fn
+            unquote(match) -> true
+            _ -> false
+          end
+
+          {sync?, opts} = Keyword.pop(opts, :sync?, true)
+          {timeout, opts} = Keyword.pop(opts, :timeout, 5_000)
+
+          task =
+            Task.Supervisor.async(Antenna.match_runner(unquote(id)), fn ->
+              with {:ok, pid, name} <-
+                     DistributedSupervisor.start_child(
+                       Antenna.matchers(unquote(id)),
+                       {Antenna.Matcher,
+                        name: unquote(name),
+                        id: unquote(id),
+                        match: unquote(name),
+                        matcher: matcher,
+                        handlers: List.wrap(handlers),
+                        channels: List.wrap(Keyword.get(opts, :channels)),
+                        once?: Keyword.get(opts, :once?, false),
+                        caller: if(sync?, do: self())}
+                     ) do
+                if sync? do
+                  require Logger
+
+                  receive do
+                    {:antenna_matcher, ^pid} ->
+                      Logger.debug("[📡] Matcher ‹" <> unquote(name) <> "› started synchronously")
+                  after
+                    timeout ->
+                      Logger.error(
+                        "[📡] Failed to start matcher ‹" <> unquote(name) <> "› synchronously in ‹#{timeout}ms›"
+                      )
+                  end
+                end
+
+                {:ok, pid, name}
+              end
+            end)
+
+          Task.await(task)
+      end
     end
   end
 

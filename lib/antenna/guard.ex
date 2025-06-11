@@ -134,6 +134,8 @@ defmodule Antenna.Guard do
     end)
   end
 
-  defp pid_to_name(id, pid), do: id |> Antenna.matchers() |> DistributedSupervisor.whois(pid)
-  defp name_to_pid(id, name), do: id |> Antenna.matchers() |> DistributedSupervisor.whereis(name)
+  @doc false
+  def pid_to_name(id, pid), do: id |> Antenna.matchers() |> DistributedSupervisor.whois(pid)
+  @doc false
+  def name_to_pid(id, name), do: id |> Antenna.matchers() |> DistributedSupervisor.whereis(name)
 end

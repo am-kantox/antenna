@@ -37,7 +37,7 @@ defmodule Antenna.PubSubTest do
   end
 
   describe "sync event handling" do
-    test "collects responses from all handlers" do
+    test "collects responses from all handlers (no subsequent matches)" do
       # Register two handlers that return different transformations
       assert {:ok, pid, _} =
                Antenna.match(@antenna, {:sync_event, _}, fn _, {:sync_event, val} -> {:ok, String.upcase(val)} end,
@@ -56,12 +56,41 @@ defmodule Antenna.PubSubTest do
       results = Antenna.sync_event(@antenna, [:sync_channel], {:sync_event, "Test"})
 
       assert Enum.any?(results, fn
-               {:match, %{results: [{:ok, "TEST"}]}} -> true
+               {:match, %{results: [ok: "TEST"]}} -> true
                _ -> false
              end)
 
       refute Enum.any?(results, fn
                {:match, %{results: [{:ok, "test"}]}} -> true
+               _ -> false
+             end)
+    end
+
+    test "collects responses from all handlers (subsequent matches)" do
+      # Register two handlers that return different transformations
+      assert {:ok, pid, _} =
+               Antenna.match(
+                 @antenna,
+                 {:sync_event_sm, _},
+                 fn _, {:sync_event_sm, val} -> {:ok, String.upcase(val)} end,
+                 channels: [:sync_channel_sm],
+                 subsequent_matches?: true
+               )
+
+      assert {:error, {:already_started, ^pid}} =
+               Antenna.match(
+                 @antenna,
+                 {:sync_event_sm, _},
+                 fn _, {:sync_event_sm, val} -> {:ok, String.downcase(val)} end,
+                 channels: [:sync_channel_sm],
+                 subsequent_matches?: true
+               )
+
+      # Send sync event and verify responses
+      results = Antenna.sync_event(@antenna, [:sync_channel_sm], {:sync_event_sm, "Test"})
+
+      assert Enum.any?(results, fn
+               {:match, %{results: results}} -> assert [ok: "TEST", ok: "test"] == Enum.sort(results)
                _ -> false
              end)
     end
