@@ -1,0 +1,82 @@
+## match/4
+
+    Antenna.match(MyApp.Antenna, pattern, handler, opts \\ [])
+
+Matches events against a pattern and executes handler when matched.
+
+Pattern can be any Elixir pattern with guards:
+
+    {:user_event, user_id, action}
+    %{type: :order, amount: amount} when amount > 1000
+    {:error, _reason} = error
+
+Handler can be a pid, function, or list of handlers:
+
+    self()
+    &Logger.info/1
+    fn channel, event -> handle_event(event) end
+    [&Logger.error/1, &Notifier.alert/1]
+
+## event/3
+
+    Antenna.event(id, channels, event)
+
+Broadcasts an event asynchronously to all matching handlers.
+
+    Antenna.event(MyApp.Antenna, [:users], {:user_login, "123"})
+    Antenna.event(MyApp.Antenna, [:metrics], %{cpu: 80})
+
+## sync_event/3,4
+
+    Antenna.sync_event(id, channels, event, timeout \\ 5_000)
+
+Broadcasts event synchronously and collects responses.
+
+    responses = Antenna.sync_event(MyApp.Antenna, [:auth], {:verify, token})
+
+## subscribe/3
+
+    Antenna.subscribe(id, channels, handler)
+
+Subscribe handler to channels manually:
+
+    Antenna.subscribe(MyApp.Antenna, [:logs], &Logger.info/1)
+    Antenna.subscribe(MyApp.Antenna, [:errors], error_handler_pid)
+
+## Common Patterns
+
+High-value orders:
+
+    Antenna.match(MyApp.Antenna,
+      %{event: :order_created, total: total} when total > 1000,
+      &HighValueOrderProcessor.handle/1,
+      channels: [:orders])
+
+Error monitoring:
+
+    Antenna.match(MyApp.Antenna, 
+      {:error, _} = error,
+      [&Logger.error/1, &Notifier.alert/1],
+      channels: [:system])
+
+Temperature alerts:
+
+    Antenna.match(MyApp.Antenna,
+      {:temperature, celsius, location} when celsius > 30,
+      fn _, event -> handle_high_temp(event) end,
+      channels: [:sensors])
+
+## Testing
+
+Match and receive events:
+
+    test "matches events" do
+      Antenna.match(TestAntenna,
+        {:test, value} when value > 0,
+        self(),
+        channels: [:test])
+        
+      Antenna.event(TestAntenna, [:test], {:test, 42})
+      assert_receive {:antenna_event, :test, {:test, 42}}
+    end
+
