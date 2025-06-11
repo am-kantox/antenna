@@ -2,7 +2,7 @@ defmodule Antenna.MixProject do
   use Mix.Project
 
   @app :antenna
-  @version "0.4.1"
+  @version "0.5.0"
 
   def project do
     [
@@ -20,10 +20,6 @@ defmodule Antenna.MixProject do
       aliases: aliases(),
       docs: docs(),
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        "coveralls.json": :test,
-        "coveralls.html": :test
-      ],
       releases: [],
       dialyzer: [
         plt_file: {:no_warn, ".dialyzer/dialyzer.plt"},
@@ -44,6 +40,10 @@ defmodule Antenna.MixProject do
     ]
   end
 
+  def cli do
+    [preferred_envs: ["coveralls.json": :test, "coveralls.html": :test]]
+  end
+
   defp deps do
     [
       {:gen_stage, "~> 1.0"},
@@ -53,7 +53,6 @@ defmodule Antenna.MixProject do
       {:excoveralls, "~> 0.14", only: [:test], runtime: false},
       {:credo, "~> 1.0", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:mneme, "~> 0.6", only: [:dev, :test]},
       {:ex_doc, ">= 0.0.0", only: [:dev]},
       {:propcheck, "~> 1.4", only: [:test]}
     ]

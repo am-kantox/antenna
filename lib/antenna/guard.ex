@@ -35,63 +35,63 @@ defmodule Antenna.Guard do
   end
 
   @impl GenServer
-  def handle_cast({:add_channel, channel, pid}, state) do
+  def handle_cast({:add_channel, channel, pid}, %__MODULE__{} = state) do
     channels =
       case pid_to_name(state.id, pid) do
         nil -> state.channels
         name -> Map.update(state.channels, name, MapSet.new([channel]), &MapSet.put(&1, channel))
       end
 
-    {:noreply, %__MODULE__{state | channels: channels}}
+    {:noreply, %{state | channels: channels}}
   end
 
-  def handle_cast({:remove_channel, channel, pid}, state) do
+  def handle_cast({:remove_channel, channel, pid}, %__MODULE__{} = state) do
     channels =
       case pid_to_name(state.id, pid) do
         nil -> state.channels
         name -> Map.update(state.channels, name, MapSet.new(), &MapSet.delete(&1, channel))
       end
 
-    {:noreply, %__MODULE__{state | channels: channels}}
+    {:noreply, %{state | channels: channels}}
   end
 
   @impl GenServer
-  def handle_cast({:add_handler, handler, pid}, state) do
+  def handle_cast({:add_handler, handler, pid}, %__MODULE__{} = state) do
     handlers =
       case pid_to_name(state.id, pid) do
         nil -> state.handlers
         name -> Map.update(state.handlers, name, MapSet.new([handler]), &MapSet.put(&1, handler))
       end
 
-    {:noreply, %__MODULE__{state | handlers: handlers}}
+    {:noreply, %{state | handlers: handlers}}
   end
 
-  def handle_cast({:remove_handler, handler, pid}, state) do
+  def handle_cast({:remove_handler, handler, pid}, %__MODULE__{} = state) do
     handlers =
       case pid_to_name(state.id, pid) do
         nil -> state.handlers
         name -> Map.update(state.handlers, name, MapSet.new(), &MapSet.delete(&1, handler))
       end
 
-    {:noreply, %__MODULE__{state | handlers: handlers}}
+    {:noreply, %{state | handlers: handlers}}
   end
 
-  def handle_cast({:remove_all_handlers, pid}, state) do
+  def handle_cast({:remove_all_handlers, pid}, %__MODULE__{} = state) do
     handlers =
       case pid_to_name(state.id, pid) do
         nil -> state.handlers
         name -> Map.delete(state.handlers, name)
       end
 
-    {:noreply, %__MODULE__{state | handlers: handlers}}
+    {:noreply, %{state | handlers: handlers}}
   end
 
   @impl GenServer
-  def handle_call({:fix, %{id: id} = match_state, unexpected}, from, %{id: id} = state)
+  def handle_call({:fix, %{id: id} = match_state, unexpected}, from, %__MODULE__{id: id} = state)
       when unexpected in [nil, :undefined, :restarting],
       do: handle_call({:fix, match_state, name_to_pid(id, match_state.match)}, from, state)
 
-  def handle_call({:fix, %{id: id} = match_state, pid}, _from, %{id: id} = state) when is_pid(pid) do
+  def handle_call({:fix, %{id: id} = match_state, pid}, _from, %__MODULE__{id: id} = state) when is_pid(pid) do
     name = match_state.match
 
     channels = state.channels |> Map.get(name, MapSet.new()) |> MapSet.union(match_state.channels)
@@ -117,13 +117,13 @@ defmodule Antenna.Guard do
   def handle_info({ref, :join, group, pids}, %__MODULE__{reference: ref} = state) do
     pids = MapSet.new(pids)
     groups = Map.update(state.groups, group, pids, &MapSet.union(&1, pids))
-    {:noreply, %__MODULE__{state | groups: groups}}
+    {:noreply, %{state | groups: groups}}
   end
 
   def handle_info({ref, :leave, group, pids}, %__MODULE__{reference: ref} = state) do
     pids = MapSet.new(pids)
     groups = Map.update(state.groups, group, pids, &MapSet.difference(&1, pids))
-    {:noreply, %__MODULE__{state | groups: groups}}
+    {:noreply, %{state | groups: groups}}
   end
 
   defp from_groups(id, %{} = chan_to_pids) do

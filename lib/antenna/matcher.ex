@@ -72,14 +72,14 @@ defmodule Antenna.Matcher do
     {:noreply, state}
   end
 
-  def handle_cast({:add_handler, handler}, state),
-    do: {:noreply, %__MODULE__{state | handlers: MapSet.put(state.handlers, handler)}}
+  def handle_cast({:add_handler, handler}, %__MODULE__{} = state),
+    do: {:noreply, %{state | handlers: MapSet.put(state.handlers, handler)}}
 
-  def handle_cast({:remove_handler, handler}, state),
-    do: {:noreply, %__MODULE__{state | handlers: MapSet.delete(state.handlers, handler)}}
+  def handle_cast({:remove_handler, handler}, %__MODULE__{} = state),
+    do: {:noreply, %{state | handlers: MapSet.delete(state.handlers, handler)}}
 
-  def handle_cast(:remove_all_handlers, state),
-    do: {:noreply, %__MODULE__{state | handlers: MapSet.new([])}}
+  def handle_cast(:remove_all_handlers, %__MODULE__{} = state),
+    do: {:noreply, %{state | handlers: MapSet.new([])}}
 
   @impl GenServer
   @doc false
