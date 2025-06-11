@@ -1,82 +1,130 @@
-## match/4
+# Antenna Cheatsheet
 
-    Antenna.match(MyApp.Antenna, pattern, handler, opts \\ [])
+## Setting up matchers
 
-Matches events against a pattern and executes handler when matched.
+### `match/4`
 
-Pattern can be any Elixir pattern with guards:
+#### Matches events against a pattern and executes handler when matched
 
-    {:user_event, user_id, action}
-    %{type: :order, amount: amount} when amount > 1000
-    {:error, _reason} = error
+```elixir
+Antenna.match(MyApp.Antenna, pattern, handler, opts \\ [])
+```
 
-Handler can be a pid, function, or list of handlers:
+#### Pattern can be any Elixir pattern with guards
 
-    self()
-    &Logger.info/1
-    fn channel, event -> handle_event(event) end
-    [&Logger.error/1, &Notifier.alert/1]
+```elixir
+{:user_event, user_id, action}
+%{type: :order, amount: amount} when amount > 1000
+{:error, _reason} = error
+```
 
-## event/3
+#### Handler can be a pid, function, or list of handlers
 
-    Antenna.event(id, channels, event)
+```elixir
+self()
+&Logger.info/1
+fn channel, event -> handle_event(event) end
+[&Logger.error/1, &Notifier.alert/1]
+```
 
-Broadcasts an event asynchronously to all matching handlers.
+### Common Patterns
 
-    Antenna.event(MyApp.Antenna, [:users], {:user_login, "123"})
-    Antenna.event(MyApp.Antenna, [:metrics], %{cpu: 80})
+#### High-value orders
 
-## sync_event/3,4
+```elixir
+Antenna.match(MyApp.Antenna,
+  %{event: :order_created, total: total} when total > 1000,
+  &HighValueOrderProcessor.handle/1,
+  channels: [:orders])
+```
 
-    Antenna.sync_event(id, channels, event, timeout \\ 5_000)
+#### Error monitoring
 
-Broadcasts event synchronously and collects responses.
+```elixir
+Antenna.match(MyApp.Antenna, 
+  {:error, _},
+  [&Logger.error/1, &Notifier.alert/1],
+  channels: [:system])
+```
 
-    responses = Antenna.sync_event(MyApp.Antenna, [:auth], {:verify, token})
+#### Temperature alerts
 
-## subscribe/3
+```elixir
+Antenna.match(MyApp.Antenna,
+  {:temperature, celsius, location} when celsius > 30,
+  fn _, event -> handle_high_temp(event) end,
+  channels: [:sensors])
+```
 
-    Antenna.subscribe(id, channels, handler)
+## Handling events
 
-Subscribe handler to channels manually:
+### `event/3`
 
-    Antenna.subscribe(MyApp.Antenna, [:logs], &Logger.info/1)
-    Antenna.subscribe(MyApp.Antenna, [:errors], error_handler_pid)
+#### Sends an event to all the channels specified and responds immediately
 
-## Common Patterns
+```elixir
+Antenna.event(id, channels, event)
+```
 
-High-value orders:
+#### Broadcasts an event asynchronously to all matching handlers
 
-    Antenna.match(MyApp.Antenna,
-      %{event: :order_created, total: total} when total > 1000,
-      &HighValueOrderProcessor.handle/1,
-      channels: [:orders])
+```elixir
+Antenna.event(MyApp.Antenna, [:users], {:user_login, "123"})
+Antenna.event(MyApp.Antenna, [:metrics], %{cpu: 80})
+```
 
-Error monitoring:
+### `sync_event/3,4`
 
-    Antenna.match(MyApp.Antenna, 
-      {:error, _} = error,
-      [&Logger.error/1, &Notifier.alert/1],
-      channels: [:system])
+#### Sends an event to all the channels specified and waits for responds
 
-Temperature alerts:
+```elixir
+Antenna.sync_event(id, channels, event, timeout \\ 5_000)
+```
 
-    Antenna.match(MyApp.Antenna,
-      {:temperature, celsius, location} when celsius > 30,
-      fn _, event -> handle_high_temp(event) end,
-      channels: [:sensors])
+#### Broadcasts event synchronously and collects responses
+
+```elixir
+responses = Antenna.sync_event(MyApp.Antenna, [:auth], {:verify, token})
+```
+
+## Adding handlers/subscribers to events
+
+### `subscribe/3`
+
+#### Subscribes the handlers(s) to channel(s)
+
+```elixir
+Antenna.subscribe(id, channels, handler)
+```
+
+#### Subscribe handler to channels manually
+
+```elixir
+Antenna.subscribe(MyApp.Antenna, [:logs], &Logger.info/1)
+Antenna.subscribe(MyApp.Antenna, [:errors], error_handler_pid)
+```
 
 ## Testing
 
-Match and receive events:
+### Match and receive events
 
-    test "matches events" do
-      Antenna.match(TestAntenna,
-        {:test, value} when value > 0,
-        self(),
-        channels: [:test])
-        
-      Antenna.event(TestAntenna, [:test], {:test, 42})
-      assert_receive {:antenna_event, :test, {:test, 42}}
-    end
+#### Declaration
+
+```elixir
+test "matches events" do
+  Antenna.match(TestAntenna,
+    {:test, value} when value > 0,
+    self(),
+    channels: [:test])
+  # ⇓ see below ⇓ 
+```
+
+#### Validation
+
+```elixir
+  # ⇑ see above ⇑ 
+  Antenna.event(TestAntenna, [:test], {:test, 42})
+  assert_receive {:antenna_event, :test, {:test, 42}}
+end
+```
 
